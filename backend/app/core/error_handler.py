@@ -1,8 +1,10 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from app.core.logger import get_logger
+from app.schemas.error_schema import ErrorResponse
 
 logger = get_logger(__name__)
+
 
 async def error_handler_middleware(request: Request, call_next):
     try:
@@ -11,9 +13,8 @@ async def error_handler_middleware(request: Request, call_next):
     except Exception as e:
         logger.error(f"Erro na requisição: {str(e)}")
 
+        error = ErrorResponse(error="Internal Server Error")
         return JSONResponse(
             status_code=500,
-            content={
-                "error": "Internal Server Error"
-            }
+            content=error.model_dump(),
         )
