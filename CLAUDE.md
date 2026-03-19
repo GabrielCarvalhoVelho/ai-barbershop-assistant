@@ -8,14 +8,19 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: MVP inicial** — estrutura base com respostas mock. Sem IA real nem banco de dados ainda.
+**Fase: MVP inicial** — estrutura base com respostas mock e validação completa. Sem IA real nem banco de dados ainda.
 
 - FastAPI + Uvicorn rodando
 - Endpoints: `GET /` (root), `GET /health`, `POST /chat`
 - Chat retorna echo: `"Você disse: {message}"`
-- Schemas Pydantic completos com validação (request, response e erro)
-- Middleware de error handling com `ErrorResponse` padronizado
+- Validação em 3 camadas:
+  - **Schema (Pydantic):** formato — vazio, tamanho (1-500), strip whitespace, só especiais, char repetido único → `422`
+  - **Service (negócio):** conteúdo — spam (10+ chars repetidos, palavra 5x seguida), sanitização de espaços internos → `400`
+  - **Middleware (catch-all):** erros internos inesperados → `500`
+- Schemas Pydantic: `ChatRequest`, `ChatResponse`, `HealthResponse`, `ErrorResponse` (com campo `details` opcional)
+- Exception handlers registrados: `RequestValidationError` (422), `BusinessError` (400)
 - Logger configurado
+- 50 testes automatizados (schemas, services, API integração) — todos passando
 - Placeholders vazios: `config.py`, `database.py`, `models/message.py`
 
 ## Arquitetura
@@ -25,9 +30,10 @@ Monolito em camadas (preparado para futura evolução a microserviços):
 ```
 backend/
   app/
-    api/routes.py          # Rotas da API (endpoints)
+    api/routes.py          # Todas as rotas da API (/, /health, /chat)
     core/config.py         # Configurações (placeholder)
-    core/error_handler.py  # Middleware de tratamento de erros
+    core/error_handler.py  # Handlers de erro (validação 422, negócio 400, catch-all 500)
+    core/exceptions.py     # Exceções customizadas (BusinessError)
     core/logger.py         # Setup de logging
     db/database.py         # Conexão com banco (placeholder)
     models/message.py      # Models do banco (placeholder)
@@ -35,10 +41,14 @@ backend/
     schemas/health_schema.py # HealthResponse
     schemas/error_schema.py  # ErrorResponse (usado no error handler)
     services/chat_service.py # Lógica de negócio (chat)
-    main.py                # Entry point da aplicação
+    main.py                # Entry point (config, middleware, handlers — sem rotas)
+  tests/
+    test_schemas.py        # Testes unitários dos schemas Pydantic (16 testes)
+    test_services.py       # Testes unitários do chat_service (11 testes)
+    test_api.py            # Testes de integração dos endpoints (13 testes)
 ```
 
-**Fluxo:** Cliente → API (routes) → Services → (futuramente: IA + DB) → Resposta
+**Fluxo:** Cliente → API (routes) → Services (sanitização + regras de negócio) → (futuramente: IA + DB) → Resposta
 
 ## Stack
 
@@ -47,7 +57,8 @@ backend/
 - **Server:** Uvicorn
 - **Validação:** Pydantic
 - **Ambiente:** venv + pip
-- **Dependências:** `requirements.txt` (fastapi, uvicorn, python-dotenv)
+- **Testes:** pytest + httpx (TestClient do FastAPI)
+- **Dependências:** `requirements.txt` com versões fixas (fastapi==0.135.1, uvicorn==0.42.0, python-dotenv==1.2.2, pytest==9.0.2, httpx==0.28.1)
 
 ## Como rodar
 
@@ -57,16 +68,25 @@ source ../venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
+## Como testar
+
+```bash
+cd backend
+source ../venv/bin/activate
+python -m pytest tests/ -v
+```
+
 ## Roadmap (próximos passos)
 
-1. Integração com IA generativa (OpenAI API + LangChain)
-2. Banco de dados (PostgreSQL)
-3. Histórico de conversas
-4. RAG (Retrieval Augmented Generation) para respostas contextualizadas
-5. Agendamento automático de horários
-6. Integração com WhatsApp/Instagram
-7. Autenticação e dashboard administrativo
-8. Docker + deploy
+1. ~~Testes automatizados (pytest)~~ ✅
+2. Integração com IA generativa (OpenAI API + LangChain)
+3. Banco de dados (PostgreSQL)
+4. Histórico de conversas
+5. RAG (Retrieval Augmented Generation) para respostas contextualizadas
+6. Agendamento automático de horários
+7. Integração com WhatsApp/Instagram
+8. Autenticação e dashboard administrativo
+9. Docker + deploy
 
 ## Convenções
 

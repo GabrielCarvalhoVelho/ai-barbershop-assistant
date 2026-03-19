@@ -6,6 +6,11 @@ from app.services.chat_service import generate_response
 router = APIRouter()
 
 
+@router.get("/")
+def read_root():
+    return {"message": "API is running"}
+
+
 @router.get("/health", response_model=HealthResponse)
 def health_check():
     return HealthResponse()
