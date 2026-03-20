@@ -1,0 +1,118 @@
+from unittest.mock import patch
+from fastapi.testclient import TestClient
+
+from app.core.config import settings
+from app.main import app
+
+
+# ========================
+# Rate Limiting
+# ========================
+
+class TestRateLimiting:
+    def test_within_limit_succeeds(self, client):
+        response = client.post("/api/v1/chat", json={"message": "Ola"})
+        assert response.status_code == 200
+
+    def test_exceeds_rate_limit(self, client):
+        for _ in range(10):
+            client.post("/api/v1/chat", json={"message": "Ola"})
+
+        response = client.post("/api/v1/chat", json={"message": "Ola"})
+        assert response.status_code == 429
+
+    def test_health_not_rate_limited(self, client):
+        for _ in range(15):
+            response = client.get("/api/v1/health")
+        assert response.status_code == 200
+
+
+# ========================
+# Autenticação por API Key
+# ========================
+
+class TestAuthNoKeyConfigured:
+    """Quando API_KEY não está configurada, acesso é livre."""
+
+    def test_chat_without_key_works(self, client):
+        response = client.post("/api/v1/chat", json={"message": "Ola"})
+        assert response.status_code == 200
+
+    def test_health_never_requires_key(self, client):
+        response = client.get("/api/v1/health")
+        assert response.status_code == 200
+
+    def test_root_never_requires_key(self, client):
+        response = client.get("/")
+        assert response.status_code == 200
+
+
+class TestAuthWithKeyConfigured:
+    """Quando API_KEY está configurada, /chat exige o header."""
+
+    def test_chat_without_key_returns_401(self):
+        with patch.object(settings, "api_key", "test-secret-key"):
+            client = TestClient(app)
+            response = client.post("/api/v1/chat", json={"message": "Ola"})
+        assert response.status_code == 401
+        assert "ausente" in response.json()["detail"]
+
+    def test_chat_with_wrong_key_returns_403(self):
+        with patch.object(settings, "api_key", "test-secret-key"):
+            client = TestClient(app)
+            response = client.post(
+                "/api/v1/chat",
+                json={"message": "Ola"},
+                headers={"X-API-Key": "wrong-key"},
+            )
+        assert response.status_code == 403
+        assert "inválida" in response.json()["detail"]
+
+    def test_chat_with_correct_key_returns_200(self):
+        with patch.object(settings, "api_key", "test-secret-key"):
+            client = TestClient(app)
+            response = client.post(
+                "/api/v1/chat",
+                json={"message": "Ola"},
+                headers={"X-API-Key": "test-secret-key"},
+            )
+        assert response.status_code == 200
+
+    def test_health_still_open(self):
+        with patch.object(settings, "api_key", "test-secret-key"):
+            client = TestClient(app)
+            response = client.get("/api/v1/health")
+        assert response.status_code == 200
+
+
+# ========================
+# CORS
+# ========================
+
+class TestCorsConfig:
+    def test_wildcard_cors_blocked_in_production(self):
+        """CORS=['*'] + DEBUG=false deve falhar."""
+        with patch.dict(
+            "os.environ",
+            {"CORS_ORIGINS": '["*"]', "DEBUG": "false"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            try:
+                Settings()
+                assert False, "Deveria ter levantado ValueError"
+            except ValueError as e:
+                assert "não é permitido" in str(e)
+
+    def test_wildcard_cors_allowed_in_debug(self):
+        """CORS=['*'] + DEBUG=true é permitido."""
+        with patch.dict(
+            "os.environ",
+            {"CORS_ORIGINS": '["*"]', "DEBUG": "true"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            s = Settings()
+            assert s.cors_origins == ["*"]

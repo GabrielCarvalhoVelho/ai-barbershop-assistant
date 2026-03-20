@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -42,5 +42,5 @@ class ChatResponse(BaseModel):
         examples=["Olá! Oferecemos corte, barba e sobrancelha. Deseja agendar?"],
     )
     timestamp: datetime = Field(
-        default_factory=datetime.now,
+        default_factory=lambda: datetime.now(timezone.utc),
     )

@@ -2,7 +2,6 @@ import re
 
 from app.core.exceptions import BusinessError
 from app.core.logger import get_logger
-from app.schemas.chat_schema import ChatResponse
 
 logger = get_logger(__name__)
 
@@ -27,10 +26,10 @@ def _validate_business_rules(message: str) -> None:
             )
 
 
-def generate_response(message: str) -> ChatResponse:
+def generate_response(message: str) -> str:
     message = _sanitize_message(message)
     _validate_business_rules(message)
 
-    logger.info(f"Mensagem recebida: {message}")
+    logger.info("Mensagem recebida: %s", message)
 
-    return ChatResponse(response=f"Você disse: {message}")
+    return f"Você disse: {message}"

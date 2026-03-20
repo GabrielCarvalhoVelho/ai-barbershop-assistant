@@ -63,17 +63,17 @@ class TestBusinessRules:
 # ========================
 
 class TestGenerateResponse:
+    def test_returns_string(self):
+        res = generate_response("Olá")
+        assert isinstance(res, str)
+
     def test_returns_echo(self):
         res = generate_response("Olá")
-        assert res.response == "Você disse: Olá"
+        assert res == "Você disse: Olá"
 
     def test_sanitizes_before_responding(self):
         res = generate_response("quero   agendar    corte")
-        assert res.response == "Você disse: quero agendar corte"
-
-    def test_has_timestamp(self):
-        res = generate_response("teste")
-        assert res.timestamp is not None
+        assert res == "Você disse: quero agendar corte"
 
     def test_blocks_spam(self):
         with pytest.raises(BusinessError):

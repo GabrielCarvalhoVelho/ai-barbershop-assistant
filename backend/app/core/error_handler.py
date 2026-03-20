@@ -18,7 +18,7 @@ async def validation_exception_handler(
             msg = msg.removeprefix("Value error, ")
         details.append(msg)
 
-    logger.warning(f"Validação falhou: {details}")
+    logger.warning("Validação falhou: %s", details)
 
     error_response = ErrorResponse(
         error="Erro de validação na mensagem.",
@@ -33,7 +33,7 @@ async def validation_exception_handler(
 async def business_exception_handler(
     request: Request, exc: BusinessError
 ) -> JSONResponse:
-    logger.warning(f"Erro de negócio: {exc.message}")
+    logger.warning("Erro de negócio: %s", exc.message)
 
     error_response = ErrorResponse(error=exc.message)
     return JSONResponse(
@@ -47,7 +47,7 @@ async def error_handler_middleware(request: Request, call_next):
         response = await call_next(request)
         return response
     except Exception as e:
-        logger.error(f"Erro na requisição: {str(e)}")
+        logger.error("Erro na requisição: %s", e)
 
         error = ErrorResponse(error="Internal Server Error")
         return JSONResponse(
