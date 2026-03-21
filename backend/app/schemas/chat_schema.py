@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_validator
 
 _ONLY_SPECIAL_CHARS = re.compile(r"[^\w\s]+")
-_SINGLE_REPEATED_CHAR = re.compile(r"(.)\1*")
+_SINGLE_REPEATED_CHAR = re.compile(r"(.)\1+")
 
 
 class ChatRequest(BaseModel):

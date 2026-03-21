@@ -20,6 +20,9 @@ class TestRateLimiting:
 
         response = client.post("/api/v1/chat", json={"message": "Ola"})
         assert response.status_code == 429
+        data = response.json()
+        assert "error" in data
+        assert "Limite de requisições excedido" in data["error"]
 
     def test_health_not_rate_limited(self, client):
         for _ in range(15):

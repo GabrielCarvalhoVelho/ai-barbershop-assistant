@@ -40,6 +40,10 @@ class TestChatRequestValid:
         req = ChatRequest(message="Ação, coração, café")
         assert req.message == "Ação, coração, café"
 
+    def test_single_char_accepted(self):
+        req = ChatRequest(message="a")
+        assert req.message == "a"
+
     def test_different_repeated_chars(self):
         req = ChatRequest(message="ababab")
         assert req.message == "ababab"

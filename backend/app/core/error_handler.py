@@ -2,6 +2,7 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from app.core.exceptions import BusinessError
+from slowapi.errors import RateLimitExceeded
 from app.core.logger import get_logger
 from app.schemas.error_schema import ErrorResponse
 
@@ -38,6 +39,18 @@ async def business_exception_handler(
     error_response = ErrorResponse(error=exc.message)
     return JSONResponse(
         status_code=400,
+        content=error_response.model_dump(exclude_none=True),
+    )
+
+
+async def rate_limit_exception_handler(
+    request: Request, exc: RateLimitExceeded
+) -> JSONResponse:
+    logger.warning("Rate limit excedido: %s", exc.detail)
+
+    error_response = ErrorResponse(error="Limite de requisições excedido. Tente novamente mais tarde.")
+    return JSONResponse(
+        status_code=429,
         content=error_response.model_dump(exclude_none=True),
     )
 

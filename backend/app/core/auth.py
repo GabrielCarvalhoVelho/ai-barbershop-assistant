@@ -1,4 +1,6 @@
-from fastapi import Depends, HTTPException, Security
+import secrets
+
+from fastapi import HTTPException, Security
 from fastapi.security import APIKeyHeader
 from app.core.config import settings
 
@@ -17,7 +19,7 @@ async def require_api_key(
             detail="API key ausente. Envie o header X-API-Key.",
         )
 
-    if api_key != settings.api_key:
+    if not secrets.compare_digest(api_key, settings.api_key):
         raise HTTPException(
             status_code=403,
             detail="API key inválida.",
