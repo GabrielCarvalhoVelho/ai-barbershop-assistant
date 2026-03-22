@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000"]
     api_key: str = ""
     rate_limit: str = "10/minute"
+    database_url: str = "sqlite+aiosqlite:///./barbershop.db"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 

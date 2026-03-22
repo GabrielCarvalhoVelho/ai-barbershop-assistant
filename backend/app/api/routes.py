@@ -1,10 +1,14 @@
 from fastapi import APIRouter, Depends, Request
-from app.schemas.chat_schema import ChatRequest, ChatResponse
-from app.schemas.health_schema import HealthResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.controllers.chat_controller import ChatController
 from app.controllers.health_controller import HealthController
-from app.core.rate_limiter import limiter
 from app.core.auth import require_api_key
+from app.core.rate_limiter import limiter
+from app.db.database import get_session
+from app.repositories.message_repository import MessageRepository
+from app.schemas.chat_schema import ChatRequest, ChatResponse
+from app.schemas.health_schema import HealthResponse
 
 root_router = APIRouter()
 router = APIRouter(prefix="/api/v1")
@@ -24,5 +28,10 @@ async def health_check():
 
 @router.post("/chat", response_model=ChatResponse, dependencies=[Depends(require_api_key)])
 @limiter.limit("10/minute")
-async def chat(request: Request, body: ChatRequest):
-    return ChatController.send_message(body)
+async def chat(
+    request: Request,
+    body: ChatRequest,
+    session: AsyncSession = Depends(get_session),
+):
+    repository = MessageRepository(session)
+    return await ChatController.send_message(body, repository=repository)

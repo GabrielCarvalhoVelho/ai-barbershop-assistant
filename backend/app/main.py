@@ -1,23 +1,36 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+
 from app.api.routes import root_router, router
+from app.core.config import settings
 from app.core.error_handler import (
     business_exception_handler,
     error_handler_middleware,
     rate_limit_exception_handler,
     validation_exception_handler,
 )
-from app.core.config import settings
 from app.core.exceptions import BusinessError
 from app.core.logger import setup_logger
 from app.core.rate_limiter import limiter
+from app.db.database import create_tables, dispose_engine
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await create_tables()
+    yield
+    await dispose_engine()
+
 
 app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
+    lifespan=lifespan,
 )
 
 app.state.limiter = limiter
