@@ -9,15 +9,16 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.api.routes import root_router, router
 from app.core.config import settings
 from app.core.error_handler import (
-    business_exception_handler,
+    app_exception_handler,
     error_handler_middleware,
     rate_limit_exception_handler,
     validation_exception_handler,
 )
-from app.core.exceptions import BusinessError
+from app.core.exceptions import AppError
 from app.core.logger import setup_logger
 from app.core.rate_limiter import limiter
 from app.db.database import create_tables, dispose_engine
+import app.models  # noqa: F401 — registra models no SQLAlchemy antes do create_tables
 
 
 @asynccontextmanager
@@ -49,7 +50,7 @@ app.add_middleware(SlowAPIMiddleware)
 app.middleware("http")(error_handler_middleware)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exception_handler)
 app.add_exception_handler(RequestValidationError, validation_exception_handler)
-app.add_exception_handler(BusinessError, business_exception_handler)
+app.add_exception_handler(AppError, app_exception_handler)
 
 app.include_router(root_router)
 app.include_router(router)

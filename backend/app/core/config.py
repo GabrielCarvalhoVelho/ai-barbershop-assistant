@@ -1,5 +1,9 @@
+from pathlib import Path
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
 
 class Settings(BaseSettings):
@@ -11,7 +15,10 @@ class Settings(BaseSettings):
     rate_limit: str = "10/minute"
     database_url: str = "sqlite+aiosqlite:///./barbershop.db"
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+    model_config = {
+        "env_file": str(PROJECT_ROOT / ".env"),
+        "env_file_encoding": "utf-8",
+    }
 
     @model_validator(mode="after")
     def warn_wildcard_cors(self):

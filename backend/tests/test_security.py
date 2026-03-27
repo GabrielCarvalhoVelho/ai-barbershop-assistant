@@ -20,9 +20,10 @@ class TestRateLimiting:
 
         response = client.post("/api/v1/chat", json={"message": "Ola"})
         assert response.status_code == 429
-        data = response.json()
-        assert "error" in data
-        assert "Limite de requisições excedido" in data["error"]
+        body = response.json()
+        assert body["success"] is False
+        assert "Limite de requisições excedido" in body["error"]["message"]
+        assert "timestamp" in body
 
     def test_health_not_rate_limited(self, client):
         for _ in range(15):
@@ -58,7 +59,10 @@ class TestAuthWithKeyConfigured:
             client = TestClient(app)
             response = client.post("/api/v1/chat", json={"message": "Ola"})
         assert response.status_code == 401
-        assert "ausente" in response.json()["detail"]
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "AUTH_001"
+        assert "ausente" in body["error"]["message"]
 
     def test_chat_with_wrong_key_returns_403(self):
         with patch.object(settings, "api_key", "test-secret-key"):
@@ -69,7 +73,10 @@ class TestAuthWithKeyConfigured:
                 headers={"X-API-Key": "wrong-key"},
             )
         assert response.status_code == 403
-        assert "inválida" in response.json()["detail"]
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "AUTH_002"
+        assert "inválida" in body["error"]["message"]
 
     def test_chat_with_correct_key_returns_200(self):
         with patch.object(settings, "api_key", "test-secret-key"):

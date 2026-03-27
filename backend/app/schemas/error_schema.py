@@ -1,14 +1,19 @@
-from typing import Optional
+from pydantic import Field
 
-from pydantic import BaseModel, Field
+from app.schemas.base_schema import BaseResponse, ErrorDetail
 
 
-class ErrorResponse(BaseModel):
-    error: str = Field(
-        ...,
-        examples=["Internal Server Error"],
+class ErrorResponse(BaseResponse):
+    success: bool = Field(
+        default=False,
+        examples=[False],
     )
-    details: Optional[list[str]] = Field(
-        default=None,
-        examples=[["A mensagem não pode estar vazia."]],
+    error: ErrorDetail = Field(
+        ...,
+        examples=[
+            {
+                "message": "Internal Server Error",
+                "details": ["A mensagem não pode estar vazia."],
+            }
+        ],
     )

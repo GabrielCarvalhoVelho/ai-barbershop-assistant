@@ -8,7 +8,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: MVP com persistência** — arquitetura em camadas completa com banco de dados async, repositories, segurança reforçada, modelagem de dados em andamento. Sem IA real ainda.
+**Fase: MVP com persistência e API padronizada** — arquitetura em camadas completa com banco de dados async, repositories, 4 models implementados, segurança reforçada, respostas da API padronizadas com envelope. Sem IA real ainda.
 
 - FastAPI + Uvicorn rodando com metadados (title, version via `Settings`)
 - Endpoints: `GET /` (root), `GET /api/v1/health`, `POST /api/v1/chat`
@@ -18,31 +18,55 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - **Schema (Pydantic):** formato — vazio, tamanho (1-500), strip whitespace, só especiais, chars repetidos (2+) → `422`
   - **Service (negócio):** conteúdo — spam (10+ chars repetidos, palavra 5x seguida), sanitização de espaços internos → `400`
   - **Middleware (catch-all):** erros internos inesperados → `500`
-- Schemas Pydantic: `ChatRequest`, `ChatResponse` (timestamp UTC), `HealthResponse`, `ErrorResponse` (com campo `details` opcional)
-- Exception handlers registrados: `RequestValidationError` (422), `BusinessError` (400), `RateLimitExceeded` (429 — handler customizado com `ErrorResponse`)
+- **Respostas padronizadas com envelope:**
+  - **Sucesso:** `SuccessResponse` — `{success: true, data: {...}, timestamp}`
+  - **Erro:** `ErrorResponse` — `{success: false, error: {message, details?}, timestamp}`
+  - Schemas base: `BaseResponse` (success + timestamp), `SuccessResponse(BaseResponse)`, `ErrorDetail`, `ErrorResponse(BaseResponse)`
+  - Todas as rotas usam `response_model=SuccessResponse`
+  - Todos os error handlers usam `ErrorResponse` com `ErrorDetail`
+  - Erros documentados no Swagger/OpenAPI (400, 422, 429 no `/chat`)
+- Schemas Pydantic: `ChatRequest`, `ChatResponse` (sem timestamp — vive no envelope), `HealthResponse`
+- Exception handlers registrados: `RequestValidationError` (422), `BusinessError` (400), `RateLimitExceeded` (429) — todos com envelope `ErrorResponse`
 - CORS seguro por padrão: origens restritas (`http://localhost:3000`), wildcard `["*"]` só permitido com `DEBUG=true`
 - Validador `warn_wildcard_cors` impede `CORS_ORIGINS=["*"]` em produção (levanta `ValueError`)
 - Rate limiting via `slowapi` (padrão: `10/minute`, configurável via `RATE_LIMIT`). Aplicado ao `/chat`, rotas `/` e `/health` isentas
 - Autenticação por API key (`X-API-Key` header) no `/chat` com `secrets.compare_digest` (proteção contra timing attack). Opcional: se `API_KEY` vazio, acesso livre; se definido, exige header válido (401/403)
-- **Banco de dados async:**
-  - SQLAlchemy async engine + aiosqlite (dev), configurável via `DATABASE_URL` para PostgreSQL + asyncpg (prod)
+- **Banco de dados async (3 ambientes):**
+  - **Testes:** SQLite in-memory (aiosqlite) — rápido, sem dependência
+  - **Dev local:** PostgreSQL 18.1 (Postgres.app) — banco `barbershop`
+  - **Produção:** Supabase PostgreSQL (us-west-2, Session Pooler) — banco `postgres`
+  - Driver async: `asyncpg` (PostgreSQL), `aiosqlite` (SQLite)
   - `database.py`: engine, async_session, Base, get_session, create_tables, dispose_engine
   - Lifespan handler no `main.py`: cria tabelas no startup, fecha engine no shutdown
-- **Model `Message` (atual):** id, user_message, bot_response, created_at — será refatorado para novo modelo de dados
-- **Camada de repositories:** `MessageRepository(session)` com save(), get_by_id(), get_recent() — injetado via `Depends(get_session)`
-- Camada de controllers async: `ChatController` (orquestra chat + persistência) e `HealthController` (orquestra health)
+  - `config.py`: `env_file` com caminho absoluto para raiz do projeto (funciona de qualquer diretório)
+- **Migrations (Alembic):**
+  - `alembic.ini` + `migrations/env.py` configurados com async + URL dinâmica via Settings
+  - Migration inicial: cria 4 tabelas, 4 FKs, 4 índices, 2 UNIQUE constraints
+  - Aplicada no PostgreSQL local e Supabase com sucesso
+- **4 Models SQLAlchemy implementados:**
+  - `Company`: id, name, address, phone, created_at, updated_at
+  - `User`: id, company_id (FK RESTRICT), name, phone (UNIQUE), email (UNIQUE), created_at, updated_at
+  - `Conversation`: id, user_id (FK RESTRICT), company_id (FK RESTRICT), status, started_at, ended_at
+  - `Message`: id, conversation_id (FK CASCADE), sender, content, created_at
+- **Camada de repositories:** `MessageRepository(session)` com save(conversation_id, sender, content), get_by_id(), get_by_conversation() — injetado via `Depends(get_session)`
+- Camada de controllers async: `ChatController` (orquestra chat + persistência, aceita conversation_id) e `HealthController` (orquestra health)
 - Configuração centralizada: `pydantic-settings` + `.env` (7 campos: app_name, app_version, debug, cors_origins, api_key, rate_limit, database_url)
 - Logger configurado com lazy formatting (`%s`) — sem log injection
-- 75 testes automatizados — todos passando
+- 116 testes automatizados — todos passando
 - `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db` (SQLite in-memory), `db_session`
 - Dependências separadas: `requirements.txt` (prod) e `requirements-dev.txt` (dev)
 
-### Modelo de dados (em andamento)
+### Modelo de dados (concluído)
 
 4 entidades MVP definidas: **User**, **Company**, **Conversation**, **Message**
 
 - Todos relacionamentos 1:N, 4 FKs NOT NULL indexadas, 3ª Forma Normal
-- Checklist de modelagem: 4/9 concluídos (faltam: comportamento de deleção, diagrama ER, dicionário de dados, decisões de design, validação)
+- Comportamento de deleção: RESTRICT em Company→User, User→Conversation, Company→Conversation; CASCADE em Conversation→Message
+- Diagrama ER criado (draw.io, notação Crow's Foot)
+- Dicionário de dados completo (4 tabelas, 6 índices)
+- Decisões de design documentadas (6 trade-offs justificados)
+- Validado contra 4 casos de uso MVP + 2 extensões futuras
+- Checklist de modelagem: 9/9 concluídos ✅
 
 ## Arquitetura
 
@@ -62,20 +86,30 @@ backend/
     core/exceptions.py         # Exceções customizadas (BusinessError)
     core/logger.py             # Setup de logging
     db/database.py             # Engine async, session factory, Base, lifecycle helpers
-    models/message.py          # Model Message (SQLAlchemy) — será refatorado
+    models/
+      company.py               # Model Company (SQLAlchemy)
+      user.py                  # Model User (FK → Company, RESTRICT)
+      conversation.py          # Model Conversation (FK → User + Company, RESTRICT)
+      message.py               # Model Message (FK → Conversation, CASCADE)
     repositories/
-      message_repository.py    # MessageRepository: save, get_by_id, get_recent
-    schemas/chat_schema.py     # ChatRequest (validado) + ChatResponse (timestamp UTC)
-    schemas/health_schema.py   # HealthResponse
-    schemas/error_schema.py    # ErrorResponse (usado nos error handlers)
+      message_repository.py    # MessageRepository: save, get_by_id, get_by_conversation
+    schemas/base_schema.py     # BaseResponse, SuccessResponse, ErrorDetail (envelope padrão)
+    schemas/chat_schema.py     # ChatRequest (validado) + ChatResponse (dados do chat)
+    schemas/health_schema.py   # HealthResponse (dados do health)
+    schemas/error_schema.py    # ErrorResponse(BaseResponse) — envelope de erro
     services/chat_service.py   # Lógica de negócio pura (retorna str, sem schemas)
     main.py                    # Entry point (config, CORS, middleware, lifespan, handlers)
+  migrations/
+    env.py                     # Configuração Alembic async (importa Settings + Base + models)
+    versions/                  # Scripts de migration versionados
+  alembic.ini                  # Config do Alembic (URL dinâmica via env.py)
   tests/
     conftest.py                # Fixtures: client, reset_rate_limiter, setup_db, db_session
-    test_schemas.py            # 17 testes unitários dos schemas Pydantic
+    test_schemas.py            # 36 testes unitários dos schemas Pydantic (inclui envelope)
     test_controllers.py        # 7 testes unitários dos controllers (async)
     test_services.py           # 11 testes unitários do chat_service
-    test_repositories.py       # 5 testes unitários do repository (async)
+    test_models.py             # 27 testes unitários dos models (Company, User, Conversation, Message)
+    test_repositories.py       # 6 testes unitários do repository (async)
     test_api.py                # 13 testes de integração dos endpoints
     test_security.py           # 12 testes de segurança: rate limit, auth, CORS
 ```
@@ -89,14 +123,16 @@ backend/
 - **Server:** Uvicorn
 - **Validação:** Pydantic
 - **ORM:** SQLAlchemy (async)
-- **DB dev:** SQLite + aiosqlite
-- **DB prod:** PostgreSQL + asyncpg (configurável via DATABASE_URL)
+- **Migrations:** Alembic (async)
+- **DB testes:** SQLite in-memory + aiosqlite
+- **DB dev:** PostgreSQL 18.1 (Postgres.app) + asyncpg
+- **DB prod:** Supabase PostgreSQL + asyncpg (Session Pooler, us-west-2)
 - **Ambiente:** venv + pip
 - **Testes:** pytest + httpx + pytest-asyncio (TestClient do FastAPI)
 - **Configuração:** pydantic-settings (carrega `.env` automaticamente)
 - **Rate Limiting:** slowapi
 - **Autenticação:** API key via header (fastapi.security + secrets)
-- **Dependências prod:** `requirements.txt` (fastapi, uvicorn, pydantic-settings, slowapi, sqlalchemy[asyncio], aiosqlite)
+- **Dependências prod:** `requirements.txt` (fastapi, uvicorn, pydantic-settings, slowapi, sqlalchemy[asyncio], aiosqlite, asyncpg, alembic)
 - **Dependências dev:** `requirements-dev.txt` (inclui prod + pytest, httpx, pytest-asyncio)
 
 ## Como rodar
@@ -121,16 +157,18 @@ python -m pytest tests/ -v
 2. ~~Segurança base (CORS restrito, rate limiting, autenticação API key)~~ ✅
 3. ~~Correções de segurança (timing attack, handler 429, regex)~~ ✅
 4. ~~Camada de repositories + banco async~~ ✅
-5. Modelagem de dados (User, Company, Conversation, Message) 🔄
-6. Implementar models SQLAlchemy + migrations (Alembic)
-7. Padronizar respostas da API
-8. Integração com IA generativa (OpenAI API + LangChain)
-9. Histórico de conversas
-10. RAG (Retrieval Augmented Generation) para respostas contextualizadas
-11. Agendamento automático de horários
-12. Integração com WhatsApp/Instagram
-13. Autenticação e dashboard administrativo
-14. Docker + deploy
+5. ~~Modelagem de dados (User, Company, Conversation, Message)~~ ✅
+6. ~~Implementar models SQLAlchemy + migrations (Alembic)~~ ✅
+7. ~~Padronizar respostas da API~~ ✅
+8. Melhorar tratamento de erros (níveis e tipos de execução)
+9. Refatorar estrutura por módulos (chat, user, etc.)
+10. Histórico de conversas
+11. Integração com IA generativa (OpenAI API + LangChain)
+12. RAG (Retrieval Augmented Generation) para respostas contextualizadas
+13. Agendamento automático de horários
+14. Integração com WhatsApp/Instagram
+15. Autenticação e dashboard administrativo
+16. Docker + deploy
 
 ## Convenções
 
