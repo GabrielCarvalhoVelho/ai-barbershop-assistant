@@ -35,6 +35,10 @@ class ErrorDetail(BaseModel):
         ...,
         examples=["Erro de validação na mensagem."],
     )
+    field: Optional[str] = Field(
+        default=None,
+        examples=["message"],
+    )
     details: Optional[list[str]] = Field(
         default=None,
         examples=[["A mensagem não pode estar vazia."]],

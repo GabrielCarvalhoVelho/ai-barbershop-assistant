@@ -22,6 +22,7 @@ class TestRateLimiting:
         assert response.status_code == 429
         body = response.json()
         assert body["success"] is False
+        assert body["error"]["code"] == "RATE_001"
         assert "Limite de requisições excedido" in body["error"]["message"]
         assert "timestamp" in body
 

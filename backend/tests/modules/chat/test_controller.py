@@ -1,10 +1,9 @@
 import pytest
 
-from app.controllers.chat_controller import ChatController
-from app.controllers.health_controller import HealthController
 from app.core.exceptions import BusinessError
+from app.modules.chat.controller import ChatController
+from app.modules.chat.schemas import ChatRequest
 from app.schemas.base_schema import SuccessResponse
-from app.schemas.chat_schema import ChatRequest
 
 
 # ========================
@@ -42,18 +41,3 @@ class TestChatController:
         request = ChatRequest(message="spam spam spam spam spam")
         with pytest.raises(BusinessError):
             await ChatController.send_message(request)
-
-
-# ========================
-# HealthController
-# ========================
-
-class TestHealthController:
-    def test_returns_success_response(self):
-        response = HealthController.check()
-        assert isinstance(response, SuccessResponse)
-        assert response.success is True
-
-    def test_data_contains_status_ok(self):
-        response = HealthController.check()
-        assert response.data == {"status": "ok"}

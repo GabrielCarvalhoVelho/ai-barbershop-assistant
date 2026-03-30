@@ -10,7 +10,7 @@ from app.db.database import Base
 from app.models.company import Company
 from app.models.conversation import Conversation
 from app.models.user import User
-from app.repositories.message_repository import MessageRepository
+from app.modules.chat.repository import MessageRepository
 
 
 @pytest_asyncio.fixture

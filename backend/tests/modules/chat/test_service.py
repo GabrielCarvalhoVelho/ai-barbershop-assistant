@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.exceptions import BusinessError
-from app.services.chat_service import (
+from app.modules.chat.service import (
     _sanitize_message,
     _validate_business_rules,
     generate_response,

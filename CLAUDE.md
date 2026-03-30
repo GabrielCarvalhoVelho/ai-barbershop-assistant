@@ -8,9 +8,10 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: MVP com persistência e API padronizada** — arquitetura em camadas completa com banco de dados async, repositories, 4 models implementados, segurança reforçada, respostas da API padronizadas com envelope. Sem IA real ainda.
+**Fase: MVP modular com tratamento de erros robusto** — arquitetura modular por domínio de negócio, banco de dados async, 4 models, segurança reforçada, respostas padronizadas com envelope, hierarquia de exceções com error codes, logging estruturado com request ID e hardening nas camadas. Sem IA real ainda.
 
 - FastAPI + Uvicorn rodando com metadados (title, version via `Settings`)
+- **Estrutura modular por domínio:** `app/modules/chat/` e `app/modules/health/` — cada módulo com routes, controller, service, repository e schemas próprios
 - Endpoints: `GET /` (root), `GET /api/v1/health`, `POST /api/v1/chat`
 - Endpoints async (`async def`) — I/O não-bloqueante
 - Chat retorna echo: `"Você disse: {message}"`
@@ -20,101 +21,149 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - **Middleware (catch-all):** erros internos inesperados → `500`
 - **Respostas padronizadas com envelope:**
   - **Sucesso:** `SuccessResponse` — `{success: true, data: {...}, timestamp}`
-  - **Erro:** `ErrorResponse` — `{success: false, error: {message, details?}, timestamp}`
-  - Schemas base: `BaseResponse` (success + timestamp), `SuccessResponse(BaseResponse)`, `ErrorDetail`, `ErrorResponse(BaseResponse)`
-  - Todas as rotas usam `response_model=SuccessResponse`
-  - Todos os error handlers usam `ErrorResponse` com `ErrorDetail`
-  - Erros documentados no Swagger/OpenAPI (400, 422, 429 no `/chat`)
-- Schemas Pydantic: `ChatRequest`, `ChatResponse` (sem timestamp — vive no envelope), `HealthResponse`
-- Exception handlers registrados: `RequestValidationError` (422), `BusinessError` (400), `RateLimitExceeded` (429) — todos com envelope `ErrorResponse`
+  - **Erro:** `ErrorResponse` — `{success: false, request_id, error: {code, message, field?, details?}, timestamp}`
+  - Schemas compartilhados: `BaseResponse`, `SuccessResponse`, `ErrorDetail`, `ErrorResponse` em `app/schemas/`
+  - Schemas de domínio: `ChatRequest`, `ChatResponse` em `app/modules/chat/schemas.py`; `HealthResponse` em `app/modules/health/schemas.py`
+  - Erros documentados no Swagger/OpenAPI (400, 401, 403, 409, 422, 429, 500, 503 no `/chat`)
+- **Hierarquia de exceções customizadas (`AppError` base):**
+  - `AuthenticationError` (401, AUTH_001) — API key ausente
+  - `AuthorizationError` (403, AUTH_002) — API key inválida
+  - `BusinessError` (400, CHAT_001) — regra de negócio
+  - `ValidationError` (422, VAL_001) — validação customizada
+  - `NotFoundError` (404, RES_001) — recurso não encontrado
+  - `ConflictError` (409, DB_002) — violação de constraint
+  - `DatabaseError` (500, DB_001) — erro genérico de banco
+  - `ServiceUnavailableError` (503, DB_003) — banco/serviço indisponível
+  - `RateLimitError` (429, RATE_001) — rate limit excedido
+- **Exception handlers registrados (7):**
+  - `AppError` → handler unificado (usa status_code/code da exceção)
+  - `HTTPException` → handler padronizado (404, 405, etc. no formato ErrorResponse)
+  - `RequestValidationError` → 422 com field name e detalhes
+  - `RateLimitExceeded` → 429
+  - `IntegrityError` → 409 (FK/UNIQUE violation)
+  - `OperationalError` → 503 (DB indisponível/timeout)
+  - `SQLAlchemyError` → 500 (fallback genérico de banco)
+  - Middleware catch-all → 500 com stack trace logado (exc_info=True)
+- **Logging estruturado com request ID:**
+  - `RequestIDMiddleware`: gera UUID hex por request, propaga via `contextvars`, retorna no header `X-Request-ID`
+  - `RequestIDFilter`: injeta `request_id` em todo log record automaticamente
+  - Formato: `timestamp | LEVEL | module | rid=abc123 | mensagem`
+  - `request_id` no body de `ErrorResponse` (correlação header ↔ body)
+  - Logging em todas as camadas: controllers (início/fim), repositories (operações DB), services (mensagem recebida)
+  - Stack traces completos nos erros 500 (logados, nunca expostos ao cliente)
+- **Hardening nas camadas:**
+  - Repository: try-except traduz `IntegrityError` → `ConflictError`, `OperationalError`/`TimeoutError` → `ServiceUnavailableError`, `SQLAlchemyError` → `DatabaseError`; rollback automático após erro
+  - Controller: captura `AppError` do repository, loga com contexto e re-raise
+  - Timeout guard: `asyncio.wait_for(..., timeout=10s)` em todas as operações async de banco
+  - Validation handler: extrai field name do Pydantic error, inclui no `ErrorDetail.field`
 - CORS seguro por padrão: origens restritas (`http://localhost:3000`), wildcard `["*"]` só permitido com `DEBUG=true`
-- Validador `warn_wildcard_cors` impede `CORS_ORIGINS=["*"]` em produção (levanta `ValueError`)
 - Rate limiting via `slowapi` (padrão: `10/minute`, configurável via `RATE_LIMIT`). Aplicado ao `/chat`, rotas `/` e `/health` isentas
-- Autenticação por API key (`X-API-Key` header) no `/chat` com `secrets.compare_digest` (proteção contra timing attack). Opcional: se `API_KEY` vazio, acesso livre; se definido, exige header válido (401/403)
+- Autenticação por API key (`X-API-Key` header) no `/chat` com `secrets.compare_digest` (proteção contra timing attack)
 - **Banco de dados async (3 ambientes):**
   - **Testes:** SQLite in-memory (aiosqlite) — rápido, sem dependência
   - **Dev local:** PostgreSQL 18.1 (Postgres.app) — banco `barbershop`
   - **Produção:** Supabase PostgreSQL (us-west-2, Session Pooler) — banco `postgres`
-  - Driver async: `asyncpg` (PostgreSQL), `aiosqlite` (SQLite)
   - `database.py`: engine, async_session, Base, get_session, create_tables, dispose_engine
   - Lifespan handler no `main.py`: cria tabelas no startup, fecha engine no shutdown
-  - `config.py`: `env_file` com caminho absoluto para raiz do projeto (funciona de qualquer diretório)
 - **Migrations (Alembic):**
   - `alembic.ini` + `migrations/env.py` configurados com async + URL dinâmica via Settings
   - Migration inicial: cria 4 tabelas, 4 FKs, 4 índices, 2 UNIQUE constraints
-  - Aplicada no PostgreSQL local e Supabase com sucesso
-- **4 Models SQLAlchemy implementados:**
+- **4 Models SQLAlchemy** (centralizados em `app/models/`):
   - `Company`: id, name, address, phone, created_at, updated_at
   - `User`: id, company_id (FK RESTRICT), name, phone (UNIQUE), email (UNIQUE), created_at, updated_at
   - `Conversation`: id, user_id (FK RESTRICT), company_id (FK RESTRICT), status, started_at, ended_at
   - `Message`: id, conversation_id (FK CASCADE), sender, content, created_at
-- **Camada de repositories:** `MessageRepository(session)` com save(conversation_id, sender, content), get_by_id(), get_by_conversation() — injetado via `Depends(get_session)`
-- Camada de controllers async: `ChatController` (orquestra chat + persistência, aceita conversation_id) e `HealthController` (orquestra health)
 - Configuração centralizada: `pydantic-settings` + `.env` (7 campos: app_name, app_version, debug, cors_origins, api_key, rate_limit, database_url)
-- Logger configurado com lazy formatting (`%s`) — sem log injection
-- 116 testes automatizados — todos passando
+- Logger estruturado com `RequestIDFilter` + lazy formatting (`%s`) — sem log injection
+- 215 testes automatizados — todos passando
 - `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db` (SQLite in-memory), `db_session`
 - Dependências separadas: `requirements.txt` (prod) e `requirements-dev.txt` (dev)
 
-### Modelo de dados (concluído)
+### Catálogo de Error Codes
 
-4 entidades MVP definidas: **User**, **Company**, **Conversation**, **Message**
-
-- Todos relacionamentos 1:N, 4 FKs NOT NULL indexadas, 3ª Forma Normal
-- Comportamento de deleção: RESTRICT em Company→User, User→Conversation, Company→Conversation; CASCADE em Conversation→Message
-- Diagrama ER criado (draw.io, notação Crow's Foot)
-- Dicionário de dados completo (4 tabelas, 6 índices)
-- Decisões de design documentadas (6 trade-offs justificados)
-- Validado contra 4 casos de uso MVP + 2 extensões futuras
-- Checklist de modelagem: 9/9 concluídos ✅
+| Code | Domínio | HTTP | Descrição |
+|------|---------|------|-----------|
+| APP_000 | Geral | 500 | Erro não tratado (catch-all) |
+| AUTH_001 | Autenticação | 401 | API key ausente |
+| AUTH_002 | Autorização | 403 | API key inválida |
+| CHAT_001 | Chat | 400 | Conteúdo repetitivo (spam) |
+| VAL_001 | Validação | 422 | Erro de validação (Pydantic) |
+| RES_001 | Recurso | 404 | Recurso não encontrado |
+| DB_001 | Banco | 500 | Erro genérico de banco |
+| DB_002 | Banco | 409 | Violação de constraint (FK, UNIQUE) |
+| DB_003 | Banco | 503 | Banco/serviço indisponível |
+| RATE_001 | Rate Limit | 429 | Limite de requisições excedido |
+| HTTP_* | HTTP | varia | HTTPException do FastAPI/Starlette (404, 405, etc.) |
 
 ## Arquitetura
 
-Monolito em camadas (preparado para futura evolução a microserviços):
+Monolito modular por domínio de negócio (preparado para futura evolução a microserviços):
 
 ```
 backend/
   app/
-    api/routes.py              # Rotas HTTP async — root_router (/) e router (/api/v1/*)
-    controllers/
-      chat_controller.py       # Orquestração do chat (async, recebe repository opcional)
-      health_controller.py     # Orquestração do health check
-    core/config.py             # Settings centralizado (pydantic-settings + .env + validador CORS)
-    core/auth.py               # Autenticação por API key (secrets.compare_digest)
-    core/rate_limiter.py       # Rate limiting centralizado (slowapi)
-    core/error_handler.py      # Handlers de erro (422, 400, 429 customizado, 500)
-    core/exceptions.py         # Exceções customizadas (BusinessError)
-    core/logger.py             # Setup de logging
-    db/database.py             # Engine async, session factory, Base, lifecycle helpers
-    models/
-      company.py               # Model Company (SQLAlchemy)
-      user.py                  # Model User (FK → Company, RESTRICT)
-      conversation.py          # Model Conversation (FK → User + Company, RESTRICT)
-      message.py               # Model Message (FK → Conversation, CASCADE)
-    repositories/
-      message_repository.py    # MessageRepository: save, get_by_id, get_by_conversation
-    schemas/base_schema.py     # BaseResponse, SuccessResponse, ErrorDetail (envelope padrão)
-    schemas/chat_schema.py     # ChatRequest (validado) + ChatResponse (dados do chat)
-    schemas/health_schema.py   # HealthResponse (dados do health)
-    schemas/error_schema.py    # ErrorResponse(BaseResponse) — envelope de erro
-    services/chat_service.py   # Lógica de negócio pura (retorna str, sem schemas)
-    main.py                    # Entry point (config, CORS, middleware, lifespan, handlers)
+    modules/                       # Módulos de domínio (auto-contidos)
+      chat/
+        routes.py                  # POST /api/v1/chat (auth + rate limit)
+        controller.py              # ChatController (orquestração async)
+        service.py                 # Lógica de negócio pura (validação, sanitização)
+        repository.py              # MessageRepository (save, get_by_id, get_by_conversation)
+        schemas.py                 # ChatRequest (validado) + ChatResponse
+      health/
+        routes.py                  # GET /api/v1/health
+        controller.py              # HealthController
+        schemas.py                 # HealthResponse
+    api/routes.py                  # Root router (GET /)
+    core/                          # Infraestrutura compartilhada
+      config.py                    # Settings centralizado (pydantic-settings + .env)
+      auth.py                      # Autenticação por API key
+      context.py                   # ContextVar para request_id
+      middleware.py                # RequestIDMiddleware
+      rate_limiter.py              # Rate limiting (slowapi)
+      error_handler.py             # 7 handlers + middleware catch-all
+      exceptions.py                # Hierarquia: AppError → 9 subclasses
+      logger.py                    # Logger com RequestIDFilter
+    db/database.py                 # Engine async, session factory, Base, lifecycle helpers
+    models/                        # Models SQLAlchemy (centralizados, compartilhados)
+      company.py                   # Model Company
+      user.py                      # Model User (FK → Company)
+      conversation.py              # Model Conversation (FK → User + Company)
+      message.py                   # Model Message (FK → Conversation)
+    schemas/                       # Schemas compartilhados (envelope de resposta)
+      base_schema.py               # BaseResponse, SuccessResponse, ErrorDetail
+      error_schema.py              # ErrorResponse
+    main.py                        # Entry point (config, middlewares, lifespan, handlers, routers)
   migrations/
-    env.py                     # Configuração Alembic async (importa Settings + Base + models)
-    versions/                  # Scripts de migration versionados
-  alembic.ini                  # Config do Alembic (URL dinâmica via env.py)
+    env.py                         # Configuração Alembic async
+    versions/                      # Scripts de migration versionados
+  alembic.ini                      # Config do Alembic
   tests/
-    conftest.py                # Fixtures: client, reset_rate_limiter, setup_db, db_session
-    test_schemas.py            # 36 testes unitários dos schemas Pydantic (inclui envelope)
-    test_controllers.py        # 7 testes unitários dos controllers (async)
-    test_services.py           # 11 testes unitários do chat_service
-    test_models.py             # 27 testes unitários dos models (Company, User, Conversation, Message)
-    test_repositories.py       # 6 testes unitários do repository (async)
-    test_api.py                # 13 testes de integração dos endpoints
-    test_security.py           # 12 testes de segurança: rate limit, auth, CORS
+    modules/
+      chat/
+        test_controller.py         # 5 testes do ChatController (async)
+        test_service.py            # 11 testes do chat_service
+        test_repository.py         # 6 testes do MessageRepository (async)
+        test_schemas.py            # 18 testes do ChatRequest/ChatResponse
+        test_routes.py             # 11 testes de integração do /chat
+      health/
+        test_controller.py         # 2 testes do HealthController
+        test_schemas.py            # 1 teste do HealthResponse
+        test_routes.py             # 1 teste de integração do /health
+    core/
+      test_schemas.py              # 20 testes dos schemas compartilhados
+      test_exceptions.py           # 52 testes da hierarquia de exceções
+      test_error_handlers.py       # 17 testes dos handlers
+      test_logging.py              # 15 testes de request ID
+      test_hardening.py            # 15 testes de hardening
+      test_security.py             # 12 testes de segurança
+    conftest.py                    # Fixtures: client, reset_rate_limiter, setup_db, db_session
+    test_models.py                 # 27 testes dos models
+    test_root.py                   # 1 teste do GET /
 ```
 
-**Fluxo:** Cliente → Routes (HTTP) → Auth + Rate Limit → Controllers (async, orquestração) → Services (negócio) + Repositories (persistência) → DB → Resposta
+**Fluxo:** Cliente → Routes (módulo) → RequestIDMiddleware → Auth + Rate Limit → Controller → Service (negócio) + Repository (persistência) → DB → Resposta
+
+**Fluxo de erros:** Exceção → Exception Handler (AppError/HTTP/Validation/RateLimit/DB) → ErrorResponse padronizado com code + request_id → Cliente
 
 ## Stack
 
@@ -160,8 +209,8 @@ python -m pytest tests/ -v
 5. ~~Modelagem de dados (User, Company, Conversation, Message)~~ ✅
 6. ~~Implementar models SQLAlchemy + migrations (Alembic)~~ ✅
 7. ~~Padronizar respostas da API~~ ✅
-8. Melhorar tratamento de erros (níveis e tipos de execução)
-9. Refatorar estrutura por módulos (chat, user, etc.)
+8. ~~Melhorar tratamento de erros (níveis e tipos de execução)~~ ✅
+9. ~~Refatorar estrutura por módulos (chat, health)~~ ✅
 10. Histórico de conversas
 11. Integração com IA generativa (OpenAI API + LangChain)
 12. RAG (Retrieval Augmented Generation) para respostas contextualizadas
@@ -174,6 +223,8 @@ python -m pytest tests/ -v
 
 - Código e nomes de variáveis em **inglês**
 - Documentação e comunicação em **português brasileiro**
-- Arquitetura em camadas — manter separação de responsabilidades (routes → controllers → services → repositories → schemas/core/db)
+- **Arquitetura modular por domínio** — cada módulo em `app/modules/<domínio>/` com routes, controller, service, repository e schemas próprios
+- Infraestrutura compartilhada em `app/core/`, models em `app/models/`, schemas base em `app/schemas/`
+- **Testes espelham a estrutura:** `tests/modules/<domínio>/`, `tests/core/`
 - Abordagem incremental: validar antes de evoluir
 - Manter este arquivo e os arquivos de memória atualizados a cada mudança significativa
