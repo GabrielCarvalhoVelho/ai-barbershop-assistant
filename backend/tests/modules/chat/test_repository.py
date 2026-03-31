@@ -6,16 +6,26 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from sqlalchemy import event, text
+
+from app.core.exceptions import ConflictError
 from app.db.database import Base
 from app.models.company import Company
 from app.models.conversation import Conversation
 from app.models.user import User
-from app.modules.chat.repository import MessageRepository
+from app.modules.chat.repository import ConversationRepository, MessageRepository
+
+
+def _enable_fk(dbapi_conn, connection_record):
+    cursor = dbapi_conn.cursor()
+    cursor.execute("PRAGMA foreign_keys = ON")
+    cursor.close()
 
 
 @pytest_asyncio.fixture
 async def session():
     engine = create_async_engine("sqlite+aiosqlite://", echo=False)
+    event.listen(engine.sync_engine, "connect", _enable_fk)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     factory = async_sessionmaker(
@@ -27,22 +37,177 @@ async def session():
 
 
 @pytest_asyncio.fixture
-async def conversation(session):
+async def company(session):
     company = Company(name="Barbearia Teste")
     session.add(company)
     await session.commit()
     await session.refresh(company)
+    return company
 
+
+@pytest_asyncio.fixture
+async def user(session, company):
     user = User(company_id=company.id, name="João", phone="+5511999887766")
     session.add(user)
     await session.commit()
     await session.refresh(user)
+    return user
 
+
+@pytest_asyncio.fixture
+async def conversation(session, user, company):
     conv = Conversation(user_id=user.id, company_id=company.id)
     session.add(conv)
     await session.commit()
     await session.refresh(conv)
     return conv
+
+
+# ========================
+# ConversationRepository
+# ========================
+
+
+class TestConversationRepositoryCreate:
+    @pytest.mark.asyncio
+    async def test_create_returns_conversation_with_id(self, session, user, company):
+        repo = ConversationRepository(session)
+        conv = await repo.create(user.id, company.id)
+
+        assert conv.id is not None
+        assert conv.user_id == user.id
+        assert conv.company_id == company.id
+
+    @pytest.mark.asyncio
+    async def test_create_sets_status_active(self, session, user, company):
+        repo = ConversationRepository(session)
+        conv = await repo.create(user.id, company.id)
+
+        assert conv.status == "active"
+
+    @pytest.mark.asyncio
+    async def test_create_sets_started_at(self, session, user, company):
+        repo = ConversationRepository(session)
+        conv = await repo.create(user.id, company.id)
+
+        assert conv.started_at is not None
+
+    @pytest.mark.asyncio
+    async def test_create_ended_at_is_none(self, session, user, company):
+        repo = ConversationRepository(session)
+        conv = await repo.create(user.id, company.id)
+
+        assert conv.ended_at is None
+
+    @pytest.mark.asyncio
+    async def test_create_with_invalid_user_raises_conflict(self, session, company):
+        repo = ConversationRepository(session)
+        with pytest.raises(ConflictError):
+            await repo.create(user_id=999, company_id=company.id)
+
+    @pytest.mark.asyncio
+    async def test_create_with_invalid_company_raises_conflict(self, session, user):
+        repo = ConversationRepository(session)
+        with pytest.raises(ConflictError):
+            await repo.create(user_id=user.id, company_id=999)
+
+
+class TestConversationRepositoryGetById:
+    @pytest.mark.asyncio
+    async def test_get_by_id_returns_conversation(self, session, user, company):
+        repo = ConversationRepository(session)
+        created = await repo.create(user.id, company.id)
+        found = await repo.get_by_id(created.id)
+
+        assert found is not None
+        assert found.id == created.id
+        assert found.user_id == user.id
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_returns_none_for_missing(self, session):
+        repo = ConversationRepository(session)
+        found = await repo.get_by_id(999)
+
+        assert found is None
+
+
+class TestConversationRepositoryGetActiveByUser:
+    @pytest.mark.asyncio
+    async def test_returns_active_conversation(self, session, user, company):
+        repo = ConversationRepository(session)
+        created = await repo.create(user.id, company.id)
+        found = await repo.get_active_by_user(user.id, company.id)
+
+        assert found is not None
+        assert found.id == created.id
+        assert found.status == "active"
+
+    @pytest.mark.asyncio
+    async def test_returns_none_when_no_active(self, session, user, company):
+        repo = ConversationRepository(session)
+        found = await repo.get_active_by_user(user.id, company.id)
+
+        assert found is None
+
+    @pytest.mark.asyncio
+    async def test_ignores_closed_conversations(self, session, user, company):
+        repo = ConversationRepository(session)
+        created = await repo.create(user.id, company.id)
+        await repo.close(created.id)
+        found = await repo.get_active_by_user(user.id, company.id)
+
+        assert found is None
+
+    @pytest.mark.asyncio
+    async def test_returns_most_recent_active(self, session, user, company):
+        repo = ConversationRepository(session)
+        await repo.create(user.id, company.id)
+        second = await repo.create(user.id, company.id)
+        found = await repo.get_active_by_user(user.id, company.id)
+
+        assert found is not None
+        assert found.id == second.id
+
+
+class TestConversationRepositoryClose:
+    @pytest.mark.asyncio
+    async def test_close_sets_status_closed(self, session, user, company):
+        repo = ConversationRepository(session)
+        created = await repo.create(user.id, company.id)
+        closed = await repo.close(created.id)
+
+        assert closed is not None
+        assert closed.status == "closed"
+
+    @pytest.mark.asyncio
+    async def test_close_sets_ended_at(self, session, user, company):
+        repo = ConversationRepository(session)
+        created = await repo.create(user.id, company.id)
+        closed = await repo.close(created.id)
+
+        assert closed.ended_at is not None
+
+    @pytest.mark.asyncio
+    async def test_close_returns_none_for_missing(self, session):
+        repo = ConversationRepository(session)
+        result = await repo.close(999)
+
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_close_is_persisted(self, session, user, company):
+        repo = ConversationRepository(session)
+        created = await repo.create(user.id, company.id)
+        await repo.close(created.id)
+        found = await repo.get_by_id(created.id)
+
+        assert found.status == "closed"
+        assert found.ended_at is not None
+
+
+# ========================
+# MessageRepository
+# ========================
 
 
 class TestMessageRepository:

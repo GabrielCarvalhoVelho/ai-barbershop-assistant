@@ -28,19 +28,25 @@ class TestRequestIDMiddleware:
         assert response.headers[REQUEST_ID_HEADER] == custom_rid
 
     def test_request_id_present_on_success(self, client):
-        response = client.post("/api/v1/chat", json={"message": "Ola"})
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Ola", "user_id": 1, "company_id": 1},
+        )
         assert response.status_code == 200
         assert REQUEST_ID_HEADER in response.headers
 
     def test_request_id_present_on_error_422(self, client):
-        response = client.post("/api/v1/chat", json={"message": ""})
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "", "user_id": 1, "company_id": 1},
+        )
         assert response.status_code == 422
         assert REQUEST_ID_HEADER in response.headers
 
     def test_request_id_present_on_error_400(self, client):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "spam spam spam spam spam"},
+            json={"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
         )
         assert response.status_code == 400
         assert REQUEST_ID_HEADER in response.headers
@@ -52,14 +58,17 @@ class TestRequestIDMiddleware:
 
 class TestRequestIDInErrorBody:
     def test_error_422_body_has_request_id(self, client):
-        response = client.post("/api/v1/chat", json={"message": ""})
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "", "user_id": 1, "company_id": 1},
+        )
         body = response.json()
         assert "request_id" in body
 
     def test_error_400_body_has_request_id(self, client):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "spam spam spam spam spam"},
+            json={"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
         )
         body = response.json()
         assert "request_id" in body
@@ -68,7 +77,7 @@ class TestRequestIDInErrorBody:
         custom_rid = "trace-abc-123"
         response = client.post(
             "/api/v1/chat",
-            json={"message": ""},
+            json={"message": "", "user_id": 1, "company_id": 1},
             headers={REQUEST_ID_HEADER: custom_rid},
         )
         body = response.json()
@@ -77,7 +86,10 @@ class TestRequestIDInErrorBody:
 
     def test_success_response_has_no_request_id_in_body(self, client):
         """Sucesso não precisa de request_id no body — só no header."""
-        response = client.post("/api/v1/chat", json={"message": "Ola"})
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Ola", "user_id": 1, "company_id": 1},
+        )
         body = response.json()
         assert "request_id" not in body
 

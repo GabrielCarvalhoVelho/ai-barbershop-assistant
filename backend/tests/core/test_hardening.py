@@ -15,7 +15,7 @@ from app.db.database import Base
 from app.models.company import Company
 from app.models.conversation import Conversation
 from app.models.user import User
-from app.modules.chat.repository import MessageRepository
+from app.modules.chat.repository import ConversationRepository, MessageRepository
 
 
 # ========================
@@ -201,7 +201,141 @@ class TestRepositoryTimeout:
 
 
 # ========================
-# Repository — Rollback após erro
+# ConversationRepository — IntegrityError → ConflictError
+# ========================
+
+class TestConversationRepositoryIntegrityError:
+    @pytest.mark.asyncio
+    async def test_create_fk_invalid_raises_conflict_error(self, session):
+        """IntegrityError no commit → ConflictError."""
+        repo = ConversationRepository(session)
+        with patch.object(
+            session,
+            "commit",
+            new_callable=AsyncMock,
+            side_effect=IntegrityError(
+                statement="INSERT",
+                params={},
+                orig=Exception("FOREIGN KEY constraint failed"),
+            ),
+        ), pytest.raises(ConflictError) as exc_info:
+            await repo.create(user_id=1, company_id=1)
+        assert exc_info.value.code == "DB_002"
+
+
+# ========================
+# ConversationRepository — OperationalError → ServiceUnavailableError
+# ========================
+
+class TestConversationRepositoryOperationalError:
+    @pytest.mark.asyncio
+    async def test_create_db_down_raises_service_unavailable(self, session):
+        repo = ConversationRepository(session)
+        with patch.object(
+            session,
+            "commit",
+            new_callable=AsyncMock,
+            side_effect=OperationalError(
+                statement="INSERT", params={}, orig=Exception("connection refused")
+            ),
+        ), pytest.raises(ServiceUnavailableError) as exc_info:
+            await repo.create(user_id=1, company_id=1)
+        assert exc_info.value.code == "DB_003"
+
+    @pytest.mark.asyncio
+    async def test_get_by_id_db_down_raises_service_unavailable(self, session):
+        repo = ConversationRepository(session)
+        with patch.object(
+            session,
+            "get",
+            new_callable=AsyncMock,
+            side_effect=OperationalError(
+                statement="SELECT", params={}, orig=Exception("timeout")
+            ),
+        ), pytest.raises(ServiceUnavailableError):
+            await repo.get_by_id(1)
+
+    @pytest.mark.asyncio
+    async def test_get_active_db_down_raises_service_unavailable(self, session):
+        repo = ConversationRepository(session)
+        with patch.object(
+            session,
+            "execute",
+            new_callable=AsyncMock,
+            side_effect=OperationalError(
+                statement="SELECT", params={}, orig=Exception("pool exhausted")
+            ),
+        ), pytest.raises(ServiceUnavailableError):
+            await repo.get_active_by_user(1, 1)
+
+    @pytest.mark.asyncio
+    async def test_close_db_down_raises_service_unavailable(self, session):
+        repo = ConversationRepository(session)
+        with patch.object(
+            session,
+            "get",
+            new_callable=AsyncMock,
+            side_effect=OperationalError(
+                statement="SELECT", params={}, orig=Exception("connection refused")
+            ),
+        ), pytest.raises(ServiceUnavailableError):
+            await repo.close(1)
+
+
+# ========================
+# ConversationRepository — Timeout → ServiceUnavailableError
+# ========================
+
+class TestConversationRepositoryTimeout:
+    @pytest.mark.asyncio
+    async def test_create_timeout_raises_service_unavailable(self, session):
+        repo = ConversationRepository(session)
+
+        async def slow_commit():
+            await asyncio.sleep(999)
+
+        with patch.object(session, "commit", side_effect=slow_commit), patch(
+            "app.modules.chat.repository.DB_TIMEOUT_SECONDS", 0.01
+        ), pytest.raises(ServiceUnavailableError) as exc_info:
+            await repo.create(user_id=1, company_id=1)
+        assert exc_info.value.code == "DB_003"
+
+
+# ========================
+# ConversationRepository — Rollback após erro
+# ========================
+
+class TestConversationRepositoryRollback:
+    @pytest.mark.asyncio
+    async def test_session_is_rolled_back_after_integrity_error(self, session):
+        repo = ConversationRepository(session)
+
+        rollback_called = False
+        original_rollback = session.rollback
+
+        async def track_rollback():
+            nonlocal rollback_called
+            rollback_called = True
+            await original_rollback()
+
+        with patch.object(
+            session,
+            "commit",
+            new_callable=AsyncMock,
+            side_effect=IntegrityError(
+                statement="INSERT",
+                params={},
+                orig=Exception("FK failed"),
+            ),
+        ), patch.object(session, "rollback", side_effect=track_rollback):
+            with pytest.raises(ConflictError):
+                await repo.create(user_id=999, company_id=999)
+
+        assert rollback_called, "session.rollback() deveria ter sido chamado"
+
+
+# ========================
+# Repository — Rollback após erro (MessageRepository)
 # ========================
 
 class TestRepositoryRollback:
@@ -246,15 +380,17 @@ class TestControllerErrorPropagation:
         from app.modules.chat.controller import ChatController
         from app.modules.chat.schemas import ChatRequest
 
-        mock_repo = AsyncMock()
-        mock_repo.save.side_effect = ConflictError(
+        mock_conv_repo = AsyncMock()
+        mock_conv_repo.create.return_value = AsyncMock(id=1)
+        mock_msg_repo = AsyncMock()
+        mock_msg_repo.save.side_effect = ConflictError(
             message="FK violation",
         )
 
-        request = ChatRequest(message="Quero agendar")
+        request = ChatRequest(message="Quero agendar", user_id=1, company_id=1)
         with pytest.raises(ConflictError):
             await ChatController.send_message(
-                request, repository=mock_repo, conversation_id=1
+                request, mock_conv_repo, mock_msg_repo
             )
 
     @pytest.mark.asyncio
@@ -262,15 +398,17 @@ class TestControllerErrorPropagation:
         from app.modules.chat.controller import ChatController
         from app.modules.chat.schemas import ChatRequest
 
-        mock_repo = AsyncMock()
-        mock_repo.save.side_effect = ServiceUnavailableError(
+        mock_conv_repo = AsyncMock()
+        mock_conv_repo.create.return_value = AsyncMock(id=1)
+        mock_msg_repo = AsyncMock()
+        mock_msg_repo.save.side_effect = ServiceUnavailableError(
             message="DB down",
         )
 
-        request = ChatRequest(message="Quero agendar")
+        request = ChatRequest(message="Quero agendar", user_id=1, company_id=1)
         with pytest.raises(ServiceUnavailableError):
             await ChatController.send_message(
-                request, repository=mock_repo, conversation_id=1
+                request, mock_conv_repo, mock_msg_repo
             )
 
 
@@ -280,17 +418,26 @@ class TestControllerErrorPropagation:
 
 class TestValidationFieldName:
     def test_empty_message_includes_field_in_details(self, client):
-        response = client.post("/api/v1/chat", json={"message": ""})
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "", "user_id": 1, "company_id": 1},
+        )
         body = response.json()
         assert body["error"]["field"] == "message"
 
     def test_missing_field_includes_field_name(self, client):
-        response = client.post("/api/v1/chat", json={})
+        response = client.post(
+            "/api/v1/chat",
+            json={"user_id": 1, "company_id": 1},
+        )
         body = response.json()
         assert body["error"]["field"] == "message"
 
     def test_details_include_field_prefix(self, client):
-        response = client.post("/api/v1/chat", json={"message": "!!!"})
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "!!!", "user_id": 1, "company_id": 1},
+        )
         details = response.json()["error"]["details"]
         assert any("message:" in d for d in details)
 
@@ -298,7 +445,7 @@ class TestValidationFieldName:
         """Erros não-validação não devem ter campo field."""
         response = client.post(
             "/api/v1/chat",
-            json={"message": "spam spam spam spam spam"},
+            json={"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
         )
         body = response.json()
         assert "field" not in body.get("error", {})

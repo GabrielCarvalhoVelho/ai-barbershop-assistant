@@ -5,7 +5,7 @@ from app.core.auth import require_api_key
 from app.core.rate_limiter import limiter
 from app.db.database import get_session
 from app.modules.chat.controller import ChatController
-from app.modules.chat.repository import MessageRepository
+from app.modules.chat.repository import ConversationRepository, MessageRepository
 from app.modules.chat.schemas import ChatRequest
 from app.schemas.base_schema import SuccessResponse
 from app.schemas.error_schema import ErrorResponse
@@ -28,6 +28,10 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
         403: {
             "model": ErrorResponse,
             "description": "API key inválida (AUTH_002)",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "Conversa não encontrada (RES_001)",
         },
         409: {
             "model": ErrorResponse,
@@ -58,5 +62,10 @@ async def chat(
     body: ChatRequest,
     session: AsyncSession = Depends(get_session),
 ):
-    repository = MessageRepository(session)
-    return await ChatController.send_message(body, repository=repository)
+    conversation_repo = ConversationRepository(session)
+    message_repo = MessageRepository(session)
+    return await ChatController.send_message(
+        body,
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
+    )

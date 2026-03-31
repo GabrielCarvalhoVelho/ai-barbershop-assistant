@@ -49,7 +49,7 @@ class TestIntegrityErrorHandler:
             side_effect=self._make_integrity_error("FOREIGN KEY constraint failed"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         assert response.status_code == 409
@@ -68,7 +68,7 @@ class TestIntegrityErrorHandler:
             ),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         assert response.status_code == 409
@@ -82,7 +82,7 @@ class TestIntegrityErrorHandler:
             side_effect=self._make_integrity_error("secret_table.secret_column"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         body = response.json()
@@ -110,7 +110,7 @@ class TestOperationalErrorHandler:
             ),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         assert response.status_code == 503
@@ -127,7 +127,7 @@ class TestOperationalErrorHandler:
             side_effect=self._make_operational_error("connection timed out"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         assert response.status_code == 503
@@ -142,7 +142,7 @@ class TestOperationalErrorHandler:
             ),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         body = response.json()
@@ -161,7 +161,7 @@ class TestSQLAlchemyErrorHandler:
             side_effect=SQLAlchemyError("unexpected internal error"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         assert response.status_code == 500
@@ -179,7 +179,7 @@ class TestSQLAlchemyErrorHandler:
             side_effect=SQLAlchemyError("secret internal state xyz"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         body = response.json()
@@ -198,7 +198,7 @@ class TestErrorHandlerMiddleware:
             side_effect=RuntimeError("bug inesperado"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         assert response.status_code == 500
@@ -214,7 +214,7 @@ class TestErrorHandlerMiddleware:
             side_effect=RuntimeError("segredo interno do sistema"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar"}
+                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
             )
 
         body = response.json()
@@ -227,7 +227,7 @@ class TestErrorHandlerMiddleware:
             "app.modules.chat.controller.generate_response",
             side_effect=RuntimeError("erro para logar"),
         ):
-            client.post("/api/v1/chat", json={"message": "Quero agendar"})
+            client.post("/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1})
 
         error_logs = [r for r in caplog.records if r.levelno >= logging.ERROR]
         assert len(error_logs) >= 1
@@ -244,12 +244,12 @@ class TestErrorResponseFormat:
     @pytest.mark.parametrize(
         "method, path, json_body, expected_fields",
         [
-            ("POST", "/api/v1/chat", {"message": ""}, ["success", "error", "timestamp"]),
+            ("POST", "/api/v1/chat", {"message": "", "user_id": 1, "company_id": 1}, ["success", "error", "timestamp"]),
             ("GET", "/rota/inexistente", None, ["success", "error", "timestamp"]),
             (
                 "POST",
                 "/api/v1/chat",
-                {"message": "spam spam spam spam spam"},
+                {"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
                 ["success", "error", "timestamp"],
             ),
         ],

@@ -11,14 +11,14 @@ from app.main import app
 
 class TestRateLimiting:
     def test_within_limit_succeeds(self, client):
-        response = client.post("/api/v1/chat", json={"message": "Ola"})
+        response = client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
         assert response.status_code == 200
 
     def test_exceeds_rate_limit(self, client):
         for _ in range(10):
-            client.post("/api/v1/chat", json={"message": "Ola"})
+            client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
 
-        response = client.post("/api/v1/chat", json={"message": "Ola"})
+        response = client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
         assert response.status_code == 429
         body = response.json()
         assert body["success"] is False
@@ -40,7 +40,7 @@ class TestAuthNoKeyConfigured:
     """Quando API_KEY não está configurada, acesso é livre."""
 
     def test_chat_without_key_works(self, client):
-        response = client.post("/api/v1/chat", json={"message": "Ola"})
+        response = client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
         assert response.status_code == 200
 
     def test_health_never_requires_key(self, client):
@@ -58,7 +58,7 @@ class TestAuthWithKeyConfigured:
     def test_chat_without_key_returns_401(self):
         with patch.object(settings, "api_key", "test-secret-key"):
             client = TestClient(app)
-            response = client.post("/api/v1/chat", json={"message": "Ola"})
+            response = client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
         assert response.status_code == 401
         body = response.json()
         assert body["success"] is False
@@ -70,7 +70,7 @@ class TestAuthWithKeyConfigured:
             client = TestClient(app)
             response = client.post(
                 "/api/v1/chat",
-                json={"message": "Ola"},
+                json={"message": "Ola", "user_id": 1, "company_id": 1},
                 headers={"X-API-Key": "wrong-key"},
             )
         assert response.status_code == 403
@@ -84,7 +84,7 @@ class TestAuthWithKeyConfigured:
             client = TestClient(app)
             response = client.post(
                 "/api/v1/chat",
-                json={"message": "Ola"},
+                json={"message": "Ola", "user_id": 1, "company_id": 1},
                 headers={"X-API-Key": "test-secret-key"},
             )
         assert response.status_code == 200
