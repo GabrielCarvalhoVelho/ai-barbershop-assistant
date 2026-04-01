@@ -61,6 +61,72 @@ class TestChatExistingConversation:
         assert body["success"] is False
         assert body["error"]["code"] == "RES_001"
 
+    def test_closed_conversation_returns_400(self, client):
+        # Cria conversa e encerra
+        r1 = client.post("/api/v1/chat", json={"message": "Oi", "user_id": 1, "company_id": 1})
+        conv_id = r1.json()["data"]["conversation_id"]
+        client.patch(f"/api/v1/conversations/{conv_id}/close")
+
+        # Tenta enviar mensagem na conversa encerrada
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Oi de novo", "user_id": 1, "company_id": 1, "conversation_id": conv_id},
+        )
+        assert response.status_code == 400
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "CHAT_001"
+        assert "encerrada" in body["error"]["message"]
+
+    def test_messages_persisted_in_conversation(self, client):
+        # Cria conversa via chat
+        r1 = client.post("/api/v1/chat", json={"message": "Primeira", "user_id": 1, "company_id": 1})
+        conv_id = r1.json()["data"]["conversation_id"]
+
+        # Envia segunda mensagem na mesma conversa
+        client.post(
+            "/api/v1/chat",
+            json={"message": "Segunda", "user_id": 1, "company_id": 1, "conversation_id": conv_id},
+        )
+
+        # Verifica via endpoint de mensagens
+        response = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        messages = response.json()["data"]["messages"]
+        assert len(messages) == 4  # 2 user + 2 bot
+        assert messages[0]["sender"] == "user"
+        assert messages[0]["content"] == "Primeira"
+        assert messages[2]["sender"] == "user"
+        assert messages[2]["content"] == "Segunda"
+
+
+# ========================
+# POST /chat - user/company não encontrados no banco
+# ========================
+
+
+class TestChatUserCompanyNotFound:
+    def test_user_not_found_returns_404(self, client):
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Oi", "user_id": 999, "company_id": 1},
+        )
+        assert response.status_code == 404
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "RES_001"
+        assert "999" in body["error"]["message"]
+
+    def test_company_not_found_returns_404(self, client):
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Oi", "user_id": 1, "company_id": 888},
+        )
+        assert response.status_code == 404
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "RES_001"
+        assert "888" in body["error"]["message"]
+
 
 # ========================
 # POST /chat - validação de user_id e company_id

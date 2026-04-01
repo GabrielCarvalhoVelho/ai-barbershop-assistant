@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -238,17 +238,19 @@ class MessageRepository:
         return result
 
     async def get_by_conversation(
-        self, conversation_id: int, limit: int = 50
+        self, conversation_id: int, limit: int = 50, offset: int = 0
     ) -> list[Message]:
         logger.info(
-            "Buscando mensagens: conversation_id=%s limit=%s",
+            "Buscando mensagens: conversation_id=%s limit=%s offset=%s",
             conversation_id,
             limit,
+            offset,
         )
         stmt = (
             select(Message)
             .where(Message.conversation_id == conversation_id)
             .order_by(Message.created_at.asc())
+            .offset(offset)
             .limit(limit)
         )
         try:
@@ -273,6 +275,34 @@ class MessageRepository:
             len(messages),
         )
         return messages
+
+    async def count_by_conversation(self, conversation_id: int) -> int:
+        logger.info("Contando mensagens: conversation_id=%s", conversation_id)
+        stmt = select(func.count()).select_from(Message).where(
+            Message.conversation_id == conversation_id
+        )
+        try:
+            result = await asyncio.wait_for(
+                self._session.execute(stmt), timeout=DB_TIMEOUT_SECONDS
+            )
+        except (OperationalError, asyncio.TimeoutError) as e:
+            logger.error("Banco indisponível ao contar mensagens: %s", e)
+            raise ServiceUnavailableError(
+                message="Serviço de banco de dados indisponível.",
+            ) from e
+        except SQLAlchemyError as e:
+            logger.error("Erro de banco ao contar mensagens: %s", e)
+            raise DatabaseError(
+                message="Erro ao contar mensagens.",
+            ) from e
+
+        count = result.scalar_one()
+        logger.info(
+            "Total de mensagens: conversation_id=%s count=%s",
+            conversation_id,
+            count,
+        )
+        return count
 
 
 class UserRepository:

@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError, OperationalError, SQLAlchemyError
 
 from app.api.routes import root_router
 from app.core.config import settings
+from app.db.seed import seed_dev_data
 from app.core.error_handler import (
     app_exception_handler,
     error_handler_middleware,
@@ -24,7 +25,8 @@ from app.core.exceptions import AppError
 from app.core.logger import setup_logger
 from app.core.middleware import RequestIDMiddleware
 from app.core.rate_limiter import limiter
-from app.db.database import create_tables, dispose_engine
+from app.db.database import async_session, create_tables, dispose_engine
+from app.modules.chat.conversation_routes import router as conversation_router
 from app.modules.chat.routes import router as chat_router
 from app.modules.health.routes import router as health_router
 import app.models  # noqa: F401 — registra models no SQLAlchemy antes do create_tables
@@ -33,6 +35,9 @@ import app.models  # noqa: F401 — registra models no SQLAlchemy antes do creat
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await create_tables()
+    if settings.debug:
+        async with async_session() as session:
+            await seed_dev_data(session)
     yield
     await dispose_engine()
 
@@ -70,4 +75,5 @@ app.add_exception_handler(SQLAlchemyError, sqlalchemy_error_handler)
 
 app.include_router(root_router)
 app.include_router(chat_router)
+app.include_router(conversation_router)
 app.include_router(health_router)

@@ -14,16 +14,19 @@ class ChatRequest(BaseModel):
         max_length=500,
         examples=["Quais serviços vocês oferecem?"],
     )
+    # TODO: user_id e company_id serão extraídos do token JWT
+    # quando a task de autenticação + dashboard for implementada.
+    # Por ora, são enviados explicitamente no body.
     user_id: int = Field(
         ...,
         gt=0,
-        description="ID do usuário que está enviando a mensagem.",
+        description="ID do usuário que está enviando a mensagem. (Temporário — será extraído do token JWT na task de autenticação.)",
         examples=[1],
     )
     company_id: int = Field(
         ...,
         gt=0,
-        description="ID da barbearia à qual a mensagem se destina.",
+        description="ID da barbearia à qual a mensagem se destina. (Temporário — será extraído do token JWT na task de autenticação.)",
         examples=[1],
     )
     conversation_id: int | None = Field(
@@ -51,6 +54,21 @@ class ChatRequest(BaseModel):
             )
 
         return v
+
+
+class CreateConversationRequest(BaseModel):
+    user_id: int = Field(
+        ...,
+        gt=0,
+        description="ID do usuário proprietário da conversa.",
+        examples=[1],
+    )
+    company_id: int = Field(
+        ...,
+        gt=0,
+        description="ID da barbearia à qual a conversa pertence.",
+        examples=[1],
+    )
 
 
 class ChatResponse(BaseModel):

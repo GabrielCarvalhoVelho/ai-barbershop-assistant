@@ -8,13 +8,19 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: MVP modular com tratamento de erros robusto** — arquitetura modular por domínio de negócio, banco de dados async, 4 models, segurança reforçada, respostas padronizadas com envelope, hierarquia de exceções com error codes, logging estruturado com request ID e hardening nas camadas. Sem IA real ainda.
+**Fase: Histórico de conversas (em progresso)** — arquitetura modular por domínio de negócio, banco de dados async, 4 models, 6 repositories, persistência completa no fluxo de chat, validação de user/company contra o banco, seed de dev, segurança reforçada, respostas padronizadas com envelope, hierarquia de exceções com error codes, logging estruturado com request ID e hardening em todas as camadas. Sem IA real ainda.
 
 - FastAPI + Uvicorn rodando com metadados (title, version via `Settings`)
 - **Estrutura modular por domínio:** `app/modules/chat/` e `app/modules/health/` — cada módulo com routes, controller, service, repository e schemas próprios
 - Endpoints: `GET /` (root), `GET /api/v1/health`, `POST /api/v1/chat`
 - Endpoints async (`async def`) — I/O não-bloqueante
-- Chat retorna echo: `"Você disse: {message}"`
+- **Chat com persistência completa:**
+  - `POST /api/v1/chat` recebe `message`, `user_id`, `company_id`, `conversation_id` (opcional)
+  - Valida user e company contra o banco (404 se não existem)
+  - Sem `conversation_id`: cria nova conversa automaticamente
+  - Com `conversation_id`: reutiliza conversa existente (404 se não encontrada)
+  - Salva mensagem do user → gera resposta (echo por enquanto) → salva resposta do bot → retorna `{response, conversation_id}`
+  - Chat retorna echo: `"Você disse: {message}"`
 - Validação em 3 camadas:
   - **Schema (Pydantic):** formato — vazio, tamanho (1-500), strip whitespace, só especiais, chars repetidos (2+) → `422`
   - **Service (negócio):** conteúdo — spam (10+ chars repetidos, palavra 5x seguida), sanitização de espaços internos → `400`
@@ -23,8 +29,8 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - **Sucesso:** `SuccessResponse` — `{success: true, data: {...}, timestamp}`
   - **Erro:** `ErrorResponse` — `{success: false, request_id, error: {code, message, field?, details?}, timestamp}`
   - Schemas compartilhados: `BaseResponse`, `SuccessResponse`, `ErrorDetail`, `ErrorResponse` em `app/schemas/`
-  - Schemas de domínio: `ChatRequest`, `ChatResponse` em `app/modules/chat/schemas.py`; `HealthResponse` em `app/modules/health/schemas.py`
-  - Erros documentados no Swagger/OpenAPI (400, 401, 403, 409, 422, 429, 500, 503 no `/chat`)
+  - Schemas de domínio: `ChatRequest`, `ChatResponse`, `MessageResponse`, `ConversationResponse`, `ConversationDetailResponse` em `app/modules/chat/schemas.py`; `HealthResponse` em `app/modules/health/schemas.py`
+  - Erros documentados no Swagger/OpenAPI (400, 401, 403, 404, 409, 422, 429, 500, 503 no `/chat`)
 - **Hierarquia de exceções customizadas (`AppError` base):**
   - `AuthenticationError` (401, AUTH_001) — API key ausente
   - `AuthorizationError` (403, AUTH_002) — API key inválida
@@ -59,12 +65,14 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 - CORS seguro por padrão: origens restritas (`http://localhost:3000`), wildcard `["*"]` só permitido com `DEBUG=true`
 - Rate limiting via `slowapi` (padrão: `10/minute`, configurável via `RATE_LIMIT`). Aplicado ao `/chat`, rotas `/` e `/health` isentas
 - Autenticação por API key (`X-API-Key` header) no `/chat` com `secrets.compare_digest` (proteção contra timing attack)
+- **Identificação temporária:** `user_id` e `company_id` enviados no body do `/chat` (validados contra o banco, 404 se inexistentes). Serão migrados para token JWT na task 15 (Autenticação + Dashboard)
 - **Banco de dados async (3 ambientes):**
   - **Testes:** SQLite in-memory (aiosqlite) — rápido, sem dependência
   - **Dev local:** PostgreSQL 18.1 (Postgres.app) — banco `barbershop`
   - **Produção:** Supabase PostgreSQL (us-west-2, Session Pooler) — banco `postgres`
   - `database.py`: engine, async_session, Base, get_session, create_tables, dispose_engine
-  - Lifespan handler no `main.py`: cria tabelas no startup, fecha engine no shutdown
+  - `seed.py`: seed de dados para dev (1 Company + 1 User), idempotente, roda apenas com `DEBUG=true`
+  - Lifespan handler no `main.py`: cria tabelas no startup, seed de dev (se debug), fecha engine no shutdown
 - **Migrations (Alembic):**
   - `alembic.ini` + `migrations/env.py` configurados com async + URL dinâmica via Settings
   - Migration inicial: cria 4 tabelas, 4 FKs, 4 índices, 2 UNIQUE constraints
@@ -75,8 +83,8 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - `Message`: id, conversation_id (FK CASCADE), sender, content, created_at
 - Configuração centralizada: `pydantic-settings` + `.env` (7 campos: app_name, app_version, debug, cors_origins, api_key, rate_limit, database_url)
 - Logger estruturado com `RequestIDFilter` + lazy formatting (`%s`) — sem log injection
-- 215 testes automatizados — todos passando
-- `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db` (SQLite in-memory), `db_session`
+- 277 testes automatizados — todos passando
+- `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db` (SQLite in-memory com seed + FK enforcement), `db_session`
 - Dependências separadas: `requirements.txt` (prod) e `requirements-dev.txt` (dev)
 
 ### Catálogo de Error Codes
@@ -105,10 +113,10 @@ backend/
     modules/                       # Módulos de domínio (auto-contidos)
       chat/
         routes.py                  # POST /api/v1/chat (auth + rate limit)
-        controller.py              # ChatController (orquestração async)
+        controller.py              # ChatController (orquestração: valida user/company, resolve conversa, persiste)
         service.py                 # Lógica de negócio pura (validação, sanitização)
-        repository.py              # MessageRepository (save, get_by_id, get_by_conversation)
-        schemas.py                 # ChatRequest (validado) + ChatResponse
+        repository.py              # ConversationRepository, MessageRepository, UserRepository, CompanyRepository
+        schemas.py                 # ChatRequest, ChatResponse, MessageResponse, ConversationResponse, ConversationDetailResponse
       health/
         routes.py                  # GET /api/v1/health
         controller.py              # HealthController
@@ -123,7 +131,9 @@ backend/
       error_handler.py             # 7 handlers + middleware catch-all
       exceptions.py                # Hierarquia: AppError → 9 subclasses
       logger.py                    # Logger com RequestIDFilter
-    db/database.py                 # Engine async, session factory, Base, lifecycle helpers
+    db/
+      database.py                  # Engine async, session factory, Base, lifecycle helpers
+      seed.py                      # Seed de dev (Company + User), idempotente, só DEBUG=true
     models/                        # Models SQLAlchemy (centralizados, compartilhados)
       company.py                   # Model Company
       user.py                      # Model User (FK → Company)
@@ -140,11 +150,11 @@ backend/
   tests/
     modules/
       chat/
-        test_controller.py         # 5 testes do ChatController (async)
+        test_controller.py         # 13 testes do ChatController (nova conversa, existente, user/company 404, delegação)
         test_service.py            # 11 testes do chat_service
-        test_repository.py         # 6 testes do MessageRepository (async)
-        test_schemas.py            # 18 testes do ChatRequest/ChatResponse
-        test_routes.py             # 11 testes de integração do /chat
+        test_repository.py         # 22 testes (ConversationRepository + MessageRepository)
+        test_schemas.py            # 39 testes (ChatRequest, ChatResponse, MessageResponse, ConversationResponse, ConversationDetailResponse)
+        test_routes.py             # 19 testes de integração do /chat
       health/
         test_controller.py         # 2 testes do HealthController
         test_schemas.py            # 1 teste do HealthResponse
@@ -154,14 +164,14 @@ backend/
       test_exceptions.py           # 52 testes da hierarquia de exceções
       test_error_handlers.py       # 17 testes dos handlers
       test_logging.py              # 15 testes de request ID
-      test_hardening.py            # 15 testes de hardening
+      test_hardening.py            # 22 testes de hardening (Message + Conversation repos, controller, validation)
       test_security.py             # 12 testes de segurança
     conftest.py                    # Fixtures: client, reset_rate_limiter, setup_db, db_session
     test_models.py                 # 27 testes dos models
     test_root.py                   # 1 teste do GET /
 ```
 
-**Fluxo:** Cliente → Routes (módulo) → RequestIDMiddleware → Auth + Rate Limit → Controller → Service (negócio) + Repository (persistência) → DB → Resposta
+**Fluxo do chat:** Cliente → Routes → RequestIDMiddleware → Auth + Rate Limit → Controller (valida user/company → resolve/cria conversa → persiste user msg → Service gera resposta → persiste bot msg) → SuccessResponse com `{response, conversation_id}`
 
 **Fluxo de erros:** Exceção → Exception Handler (AppError/HTTP/Validation/RateLimit/DB) → ErrorResponse padronizado com code + request_id → Cliente
 
@@ -211,12 +221,12 @@ python -m pytest tests/ -v
 7. ~~Padronizar respostas da API~~ ✅
 8. ~~Melhorar tratamento de erros (níveis e tipos de execução)~~ ✅
 9. ~~Refatorar estrutura por módulos (chat, health)~~ ✅
-10. Histórico de conversas
+10. Histórico de conversas (em progresso — checklists 1 e 2 concluídas, faltam endpoints REST e testes de integração)
 11. Integração com IA generativa (OpenAI API + LangChain)
 12. RAG (Retrieval Augmented Generation) para respostas contextualizadas
 13. Agendamento automático de horários
 14. Integração com WhatsApp/Instagram
-15. Autenticação e dashboard administrativo
+15. Autenticação e dashboard administrativo ← `user_id`/`company_id` migram do body para token JWT nesta task
 16. Docker + deploy
 
 ## Convenções

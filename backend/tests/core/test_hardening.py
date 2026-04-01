@@ -386,11 +386,16 @@ class TestControllerErrorPropagation:
         mock_msg_repo.save.side_effect = ConflictError(
             message="FK violation",
         )
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get_by_id.return_value = AsyncMock(id=1)
+        mock_company_repo = AsyncMock()
+        mock_company_repo.get_by_id.return_value = AsyncMock(id=1)
 
         request = ChatRequest(message="Quero agendar", user_id=1, company_id=1)
         with pytest.raises(ConflictError):
             await ChatController.send_message(
-                request, mock_conv_repo, mock_msg_repo
+                request, mock_conv_repo, mock_msg_repo,
+                mock_user_repo, mock_company_repo,
             )
 
     @pytest.mark.asyncio
@@ -404,11 +409,16 @@ class TestControllerErrorPropagation:
         mock_msg_repo.save.side_effect = ServiceUnavailableError(
             message="DB down",
         )
+        mock_user_repo = AsyncMock()
+        mock_user_repo.get_by_id.return_value = AsyncMock(id=1)
+        mock_company_repo = AsyncMock()
+        mock_company_repo.get_by_id.return_value = AsyncMock(id=1)
 
         request = ChatRequest(message="Quero agendar", user_id=1, company_id=1)
         with pytest.raises(ServiceUnavailableError):
             await ChatController.send_message(
-                request, mock_conv_repo, mock_msg_repo
+                request, mock_conv_repo, mock_msg_repo,
+                mock_user_repo, mock_company_repo,
             )
 
 
