@@ -33,7 +33,7 @@ router = APIRouter(prefix="/api/v1", tags=["conversations"])
         },
         404: {
             "model": ErrorResponse,
-            "description": "Usuário ou empresa não encontrados (RES_001)",
+            "description": "Usuário não encontrado ou empresa não encontrada (RES_001)",
         },
         409: {
             "model": ErrorResponse,
@@ -90,6 +90,10 @@ async def create_conversation(
         404: {
             "model": ErrorResponse,
             "description": "Conversa não encontrada (RES_001)",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "Erro de validação (VAL_001)",
         },
         429: {
             "model": ErrorResponse,
@@ -194,6 +198,10 @@ async def get_conversation_messages(
         404: {
             "model": ErrorResponse,
             "description": "Conversa não encontrada (RES_001)",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "Erro de validação (VAL_001)",
         },
         429: {
             "model": ErrorResponse,

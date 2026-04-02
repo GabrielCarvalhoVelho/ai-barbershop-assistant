@@ -24,7 +24,7 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
     responses={
         400: {
             "model": ErrorResponse,
-            "description": "Erro de regra de negócio (CHAT_001)",
+            "description": "Regra de negócio — conteúdo repetitivo/spam ou conversa encerrada (CHAT_001)",
         },
         401: {
             "model": ErrorResponse,
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
         },
         404: {
             "model": ErrorResponse,
-            "description": "Conversa não encontrada (RES_001)",
+            "description": "Usuário, empresa ou conversa não encontrados (RES_001)",
         },
         409: {
             "model": ErrorResponse,

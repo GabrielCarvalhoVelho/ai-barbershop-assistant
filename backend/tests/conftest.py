@@ -63,6 +63,19 @@ def setup_db():
             session.add(user)
             await session.commit()
 
+            # Segunda company + user para testes de ownership/isolamento
+            company2 = Company(name="Outra Barbearia")
+            session.add(company2)
+            await session.commit()
+            await session.refresh(company2)
+            user2 = User(
+                company_id=company2.id,
+                name="Outro Cliente",
+                phone="+5511988888888",
+            )
+            session.add(user2)
+            await session.commit()
+
     async def _teardown():
         async with test_engine.begin() as conn:
             await conn.run_sync(Base.metadata.drop_all)

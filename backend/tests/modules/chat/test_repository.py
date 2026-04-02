@@ -272,3 +272,45 @@ class TestMessageRepository:
         messages = await repo.get_by_conversation(conversation.id, limit=2)
 
         assert len(messages) == 2
+
+
+class TestMessageRepositorySavePair:
+    @pytest.mark.asyncio
+    async def test_save_pair_returns_both_messages(self, session, conversation):
+        repo = MessageRepository(session)
+        user_msg, bot_msg = await repo.save_pair(
+            conversation.id, "Oi", "Olá!"
+        )
+
+        assert user_msg.id is not None
+        assert bot_msg.id is not None
+        assert user_msg.sender == "user"
+        assert bot_msg.sender == "bot"
+        assert user_msg.content == "Oi"
+        assert bot_msg.content == "Olá!"
+
+    @pytest.mark.asyncio
+    async def test_save_pair_persists_both(self, session, conversation):
+        repo = MessageRepository(session)
+        await repo.save_pair(conversation.id, "Oi", "Olá!")
+
+        messages = await repo.get_by_conversation(conversation.id)
+        assert len(messages) == 2
+        assert messages[0].sender == "user"
+        assert messages[1].sender == "bot"
+
+    @pytest.mark.asyncio
+    async def test_save_pair_same_conversation_id(self, session, conversation):
+        repo = MessageRepository(session)
+        user_msg, bot_msg = await repo.save_pair(
+            conversation.id, "Oi", "Olá!"
+        )
+
+        assert user_msg.conversation_id == conversation.id
+        assert bot_msg.conversation_id == conversation.id
+
+    @pytest.mark.asyncio
+    async def test_save_pair_invalid_conversation_raises_conflict(self, session):
+        repo = MessageRepository(session)
+        with pytest.raises(ConflictError):
+            await repo.save_pair(999, "Oi", "Olá!")

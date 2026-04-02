@@ -215,6 +215,64 @@ class MessageRepository:
         logger.info("Mensagem salva: id=%s", message.id)
         return message
 
+    async def save_pair(
+        self,
+        conversation_id: int,
+        user_content: str,
+        bot_content: str,
+    ) -> tuple[Message, Message]:
+        """Salva mensagem do user e do bot em uma única transação."""
+        logger.info(
+            "Salvando par de mensagens: conversation_id=%s", conversation_id
+        )
+        user_msg = Message(
+            conversation_id=conversation_id,
+            sender="user",
+            content=user_content,
+        )
+        bot_msg = Message(
+            conversation_id=conversation_id,
+            sender="bot",
+            content=bot_content,
+        )
+        try:
+            self._session.add(user_msg)
+            self._session.add(bot_msg)
+            await asyncio.wait_for(
+                self._session.commit(), timeout=DB_TIMEOUT_SECONDS
+            )
+            await asyncio.wait_for(
+                self._session.refresh(user_msg), timeout=DB_TIMEOUT_SECONDS
+            )
+            await asyncio.wait_for(
+                self._session.refresh(bot_msg), timeout=DB_TIMEOUT_SECONDS
+            )
+        except IntegrityError as e:
+            await self._session.rollback()
+            logger.warning("IntegrityError ao salvar par de mensagens: %s", e.orig)
+            raise ConflictError(
+                message="Não foi possível salvar as mensagens. Verifique os dados enviados.",
+            ) from e
+        except (OperationalError, asyncio.TimeoutError) as e:
+            await self._session.rollback()
+            logger.error("Banco indisponível ao salvar par de mensagens: %s", e)
+            raise ServiceUnavailableError(
+                message="Serviço de banco de dados indisponível.",
+            ) from e
+        except SQLAlchemyError as e:
+            await self._session.rollback()
+            logger.error("Erro de banco ao salvar par de mensagens: %s", e)
+            raise DatabaseError(
+                message="Erro ao salvar as mensagens.",
+            ) from e
+
+        logger.info(
+            "Par de mensagens salvo: user_msg_id=%s bot_msg_id=%s",
+            user_msg.id,
+            bot_msg.id,
+        )
+        return user_msg, bot_msg
+
     async def get_by_id(self, message_id: int) -> Message | None:
         logger.info("Buscando mensagem: id=%s", message_id)
         try:

@@ -100,6 +100,63 @@ class TestChatExistingConversation:
 
 
 # ========================
+# POST /chat - ownership da conversa (IDOR protection)
+# ========================
+
+
+class TestChatConversationOwnership:
+    """Testa que um usuário não pode usar a conversa de outro (IDOR protection).
+
+    O conftest.py cria: company 1 + user 1, company 2 + user 2.
+    """
+
+    def test_wrong_user_returns_403(self, client):
+        # User 1 cria conversa na company 1
+        r1 = client.post("/api/v1/chat", json={"message": "Oi", "user_id": 1, "company_id": 1})
+        conv_id = r1.json()["data"]["conversation_id"]
+
+        # User 2 tenta usar a conversa do user 1
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Invasão", "user_id": 2, "company_id": 1, "conversation_id": conv_id},
+        )
+        assert response.status_code == 403
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "AUTH_002"
+        assert "não pertence" in body["error"]["message"]
+
+    def test_wrong_company_returns_403(self, client):
+        # User 1 cria conversa na company 1
+        r1 = client.post("/api/v1/chat", json={"message": "Oi", "user_id": 1, "company_id": 1})
+        conv_id = r1.json()["data"]["conversation_id"]
+
+        # Mesmo user, mas tenta com company diferente
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Invasão", "user_id": 1, "company_id": 2, "conversation_id": conv_id},
+        )
+        assert response.status_code == 403
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "AUTH_002"
+        assert "não pertence" in body["error"]["message"]
+
+    def test_correct_ownership_succeeds(self, client):
+        # User 1 cria conversa
+        r1 = client.post("/api/v1/chat", json={"message": "Oi", "user_id": 1, "company_id": 1})
+        conv_id = r1.json()["data"]["conversation_id"]
+
+        # Mesmo user e company reutiliza normalmente
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Continuando", "user_id": 1, "company_id": 1, "conversation_id": conv_id},
+        )
+        assert response.status_code == 200
+        assert response.json()["data"]["conversation_id"] == conv_id
+
+
+# ========================
 # POST /chat - user/company não encontrados no banco
 # ========================
 

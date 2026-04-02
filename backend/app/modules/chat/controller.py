@@ -1,4 +1,4 @@
-from app.core.exceptions import AppError, BusinessError, NotFoundError
+from app.core.exceptions import AppError, AuthorizationError, BusinessError, NotFoundError
 from app.core.logger import get_logger
 from app.modules.chat.repository import (
     CompanyRepository,
@@ -49,6 +49,10 @@ class ChatController:
                 raise NotFoundError(
                     message=f"Conversa {conversation_id} não encontrada.",
                 )
+            if conversation.user_id != request.user_id or conversation.company_id != request.company_id:
+                raise AuthorizationError(
+                    message=f"Conversa {conversation_id} não pertence ao usuário ou empresa informados.",
+                )
             if conversation.status == "closed":
                 raise BusinessError(
                     message=f"Conversa {conversation_id} está encerrada. Crie uma nova conversa para continuar.",
@@ -62,19 +66,13 @@ class ChatController:
             conversation_id = conversation.id
             logger.info("Nova conversa criada: id=%s", conversation_id)
 
+        response_text = generate_response(request.message)
+
         try:
-            await message_repo.save(
+            await message_repo.save_pair(
                 conversation_id=conversation_id,
-                sender="user",
-                content=request.message,
-            )
-
-            response_text = generate_response(request.message)
-
-            await message_repo.save(
-                conversation_id=conversation_id,
-                sender="bot",
-                content=response_text,
+                user_content=request.message,
+                bot_content=response_text,
             )
         except AppError:
             logger.error(

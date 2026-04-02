@@ -383,7 +383,7 @@ class TestControllerErrorPropagation:
         mock_conv_repo = AsyncMock()
         mock_conv_repo.create.return_value = AsyncMock(id=1)
         mock_msg_repo = AsyncMock()
-        mock_msg_repo.save.side_effect = ConflictError(
+        mock_msg_repo.save_pair.side_effect = ConflictError(
             message="FK violation",
         )
         mock_user_repo = AsyncMock()
@@ -406,7 +406,7 @@ class TestControllerErrorPropagation:
         mock_conv_repo = AsyncMock()
         mock_conv_repo.create.return_value = AsyncMock(id=1)
         mock_msg_repo = AsyncMock()
-        mock_msg_repo.save.side_effect = ServiceUnavailableError(
+        mock_msg_repo.save_pair.side_effect = ServiceUnavailableError(
             message="DB down",
         )
         mock_user_repo = AsyncMock()
