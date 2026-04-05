@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.models.enums import ConversationStatus, MessageSender
+
 _ONLY_SPECIAL_CHARS = re.compile(r"[^\w\s]+")
 _SINGLE_REPEATED_CHAR = re.compile(r"(.)\1+")
 
@@ -85,7 +87,7 @@ class ChatResponse(BaseModel):
 
 class MessageResponse(BaseModel):
     id: int = Field(..., examples=[1])
-    sender: str = Field(..., examples=["user"])
+    sender: MessageSender = Field(..., examples=["user"])
     content: str = Field(..., examples=["Quero agendar um corte"])
     created_at: datetime = Field(..., examples=["2026-03-30T14:00:00Z"])
 
@@ -97,7 +99,7 @@ class MessageResponse(BaseModel):
 
 class ConversationResponse(BaseModel):
     id: int = Field(..., examples=[1])
-    status: str = Field(..., examples=["active"])
+    status: ConversationStatus = Field(..., examples=["active"])
     started_at: datetime = Field(..., examples=["2026-03-30T14:00:00Z"])
     ended_at: datetime | None = Field(None, examples=[None])
     message_count: int = Field(..., examples=[5])
@@ -105,7 +107,7 @@ class ConversationResponse(BaseModel):
 
 class ConversationDetailResponse(BaseModel):
     id: int = Field(..., examples=[1])
-    status: str = Field(..., examples=["active"])
+    status: ConversationStatus = Field(..., examples=["active"])
     started_at: datetime = Field(..., examples=["2026-03-30T14:00:00Z"])
     ended_at: datetime | None = Field(None, examples=[None])
     messages: list[MessageResponse] = Field(..., examples=[[]])

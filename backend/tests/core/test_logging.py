@@ -20,12 +20,16 @@ class TestRequestIDMiddleware:
         assert rid.isalnum()
         assert len(rid) == 32
 
-    def test_client_can_send_custom_request_id(self, client):
-        custom_rid = "my-custom-request-id-123"
+    def test_client_request_id_is_ignored(self, client):
+        """Server sempre gera o ID — header do cliente é ignorado (previne log injection)."""
+        custom_rid = "injected-value"
         response = client.get(
             "/", headers={REQUEST_ID_HEADER: custom_rid}
         )
-        assert response.headers[REQUEST_ID_HEADER] == custom_rid
+        rid = response.headers[REQUEST_ID_HEADER]
+        assert rid != custom_rid
+        assert len(rid) == 32
+        assert rid.isalnum()
 
     def test_request_id_present_on_success(self, client):
         response = client.post(
@@ -74,15 +78,15 @@ class TestRequestIDInErrorBody:
         assert "request_id" in body
 
     def test_error_request_id_matches_header(self, client):
-        custom_rid = "trace-abc-123"
+        """request_id no body do erro deve ser igual ao header da response."""
         response = client.post(
             "/api/v1/chat",
             json={"message": "", "user_id": 1, "company_id": 1},
-            headers={REQUEST_ID_HEADER: custom_rid},
         )
         body = response.json()
-        assert body["request_id"] == custom_rid
-        assert response.headers[REQUEST_ID_HEADER] == custom_rid
+        header_rid = response.headers[REQUEST_ID_HEADER]
+        assert body["request_id"] == header_rid
+        assert len(header_rid) == 32
 
     def test_success_response_has_no_request_id_in_body(self, client):
         """Sucesso não precisa de request_id no body — só no header."""

@@ -1,5 +1,6 @@
 from app.core.exceptions import AppError, AuthorizationError, BusinessError, NotFoundError
 from app.core.logger import get_logger
+from app.models.enums import ConversationStatus
 from app.modules.chat.repository import (
     CompanyRepository,
     ConversationRepository,
@@ -53,7 +54,7 @@ class ChatController:
                 raise AuthorizationError(
                     message=f"Conversa {conversation_id} não pertence ao usuário ou empresa informados.",
                 )
-            if conversation.status == "closed":
+            if conversation.status == ConversationStatus.CLOSED:
                 raise BusinessError(
                     message=f"Conversa {conversation_id} está encerrada. Crie uma nova conversa para continuar.",
                 )
@@ -239,7 +240,7 @@ class ConversationController:
                 message=f"Conversa {conversation_id} não encontrada.",
             )
 
-        if conversation.status == "closed":
+        if conversation.status == ConversationStatus.CLOSED:
             raise BusinessError(
                 message=f"Conversa {conversation_id} já está encerrada.",
             )

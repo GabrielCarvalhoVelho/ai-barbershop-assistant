@@ -11,6 +11,7 @@ from sqlalchemy import inspect
 from app.db.database import Base
 from app.models.company import Company
 from app.models.conversation import Conversation
+from app.models.enums import ConversationStatus, MessageSender
 from app.models.message import Message
 from app.models.user import User
 
@@ -254,13 +255,23 @@ class TestConversationModel:
         conv = Conversation(
             user_id=user.id,
             company_id=company.id,
-            status="closed",
+            status=ConversationStatus.CLOSED,
         )
         session.add(conv)
         await session.commit()
         await session.refresh(conv)
 
-        assert conv.status == "closed"
+        assert conv.status == ConversationStatus.CLOSED
+
+    def test_invalid_status_rejected_by_enum(self):
+        """ConversationStatus não aceita valores fora de 'active'/'closed'."""
+        with pytest.raises(ValueError):
+            ConversationStatus("banana")
+
+    def test_status_enum_has_expected_values(self):
+        assert ConversationStatus.ACTIVE.value == "active"
+        assert ConversationStatus.CLOSED.value == "closed"
+        assert len(ConversationStatus) == 2
 
     @pytest.mark.asyncio
     async def test_user_can_have_multiple_conversations(
@@ -339,14 +350,24 @@ class TestMessageModel:
     async def test_sender_can_be_bot(self, session, conversation):
         msg = Message(
             conversation_id=conversation.id,
-            sender="bot",
+            sender=MessageSender.BOT,
             content="Resposta",
         )
         session.add(msg)
         await session.commit()
         await session.refresh(msg)
 
-        assert msg.sender == "bot"
+        assert msg.sender == MessageSender.BOT
+
+    def test_invalid_sender_rejected_by_enum(self):
+        """MessageSender não aceita valores fora de 'user'/'bot'."""
+        with pytest.raises(ValueError):
+            MessageSender("hacker")
+
+    def test_sender_enum_has_expected_values(self):
+        assert MessageSender.USER.value == "user"
+        assert MessageSender.BOT.value == "bot"
+        assert len(MessageSender) == 2
 
     @pytest.mark.asyncio
     async def test_conversation_can_have_multiple_messages(

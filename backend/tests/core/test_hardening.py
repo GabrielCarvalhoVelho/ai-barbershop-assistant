@@ -67,7 +67,7 @@ class TestRepositoryIntegrityError:
         repo = MessageRepository(session)
         with patch.object(
             session,
-            "commit",
+            "flush",
             new_callable=AsyncMock,
             side_effect=IntegrityError(
                 statement="INSERT",
@@ -83,7 +83,7 @@ class TestRepositoryIntegrityError:
         repo = MessageRepository(session)
         with patch.object(
             session,
-            "commit",
+            "flush",
             new_callable=AsyncMock,
             side_effect=IntegrityError(
                 statement="INSERT",
@@ -106,7 +106,7 @@ class TestRepositoryOperationalError:
         repo = MessageRepository(session)
         with patch.object(
             session,
-            "commit",
+            "flush",
             new_callable=AsyncMock,
             side_effect=OperationalError(
                 statement="INSERT", params={}, orig=Exception("connection refused")
@@ -158,7 +158,7 @@ class TestRepositorySQLAlchemyError:
         repo = MessageRepository(session)
         with patch.object(
             session,
-            "commit",
+            "flush",
             new_callable=AsyncMock,
             side_effect=SQLAlchemyError("unexpected"),
         ), pytest.raises(DatabaseError) as exc_info:
@@ -175,13 +175,13 @@ class TestRepositoryTimeout:
     async def test_save_timeout_raises_service_unavailable(
         self, session, conversation
     ):
-        """asyncio.TimeoutError no commit → ServiceUnavailableError."""
+        """asyncio.TimeoutError no flush → ServiceUnavailableError."""
         repo = MessageRepository(session)
 
-        async def slow_commit():
+        async def slow_flush():
             await asyncio.sleep(999)
 
-        with patch.object(session, "commit", side_effect=slow_commit), patch(
+        with patch.object(session, "flush", side_effect=slow_flush), patch(
             "app.modules.chat.repository.DB_TIMEOUT_SECONDS", 0.01
         ), pytest.raises(ServiceUnavailableError) as exc_info:
             await repo.save(conversation.id, "user", "teste")
@@ -211,7 +211,7 @@ class TestConversationRepositoryIntegrityError:
         repo = ConversationRepository(session)
         with patch.object(
             session,
-            "commit",
+            "flush",
             new_callable=AsyncMock,
             side_effect=IntegrityError(
                 statement="INSERT",
@@ -233,7 +233,7 @@ class TestConversationRepositoryOperationalError:
         repo = ConversationRepository(session)
         with patch.object(
             session,
-            "commit",
+            "flush",
             new_callable=AsyncMock,
             side_effect=OperationalError(
                 statement="INSERT", params={}, orig=Exception("connection refused")
@@ -291,10 +291,10 @@ class TestConversationRepositoryTimeout:
     async def test_create_timeout_raises_service_unavailable(self, session):
         repo = ConversationRepository(session)
 
-        async def slow_commit():
+        async def slow_flush():
             await asyncio.sleep(999)
 
-        with patch.object(session, "commit", side_effect=slow_commit), patch(
+        with patch.object(session, "flush", side_effect=slow_flush), patch(
             "app.modules.chat.repository.DB_TIMEOUT_SECONDS", 0.01
         ), pytest.raises(ServiceUnavailableError) as exc_info:
             await repo.create(user_id=1, company_id=1)
@@ -302,72 +302,43 @@ class TestConversationRepositoryTimeout:
 
 
 # ========================
-# ConversationRepository — Rollback após erro
+# Repositories — erro propaga para o session manager fazer rollback
 # ========================
 
-class TestConversationRepositoryRollback:
+class TestRepositoryErrorPropagation:
     @pytest.mark.asyncio
-    async def test_session_is_rolled_back_after_integrity_error(self, session):
+    async def test_conversation_integrity_error_propagates_as_conflict(self, session):
+        """IntegrityError no flush propaga como ConflictError — session manager faz rollback."""
         repo = ConversationRepository(session)
-
-        rollback_called = False
-        original_rollback = session.rollback
-
-        async def track_rollback():
-            nonlocal rollback_called
-            rollback_called = True
-            await original_rollback()
-
         with patch.object(
             session,
-            "commit",
+            "flush",
             new_callable=AsyncMock,
             side_effect=IntegrityError(
                 statement="INSERT",
                 params={},
                 orig=Exception("FK failed"),
             ),
-        ), patch.object(session, "rollback", side_effect=track_rollback):
-            with pytest.raises(ConflictError):
-                await repo.create(user_id=999, company_id=999)
+        ), pytest.raises(ConflictError):
+            await repo.create(user_id=999, company_id=999)
 
-        assert rollback_called, "session.rollback() deveria ter sido chamado"
-
-
-# ========================
-# Repository — Rollback após erro (MessageRepository)
-# ========================
-
-class TestRepositoryRollback:
     @pytest.mark.asyncio
-    async def test_session_is_rolled_back_after_integrity_error(
+    async def test_message_integrity_error_propagates_as_conflict(
         self, session, conversation
     ):
-        """Após ConflictError, a session deve estar limpa para reutilização."""
+        """IntegrityError no flush propaga como ConflictError — session manager faz rollback."""
         repo = MessageRepository(session)
-
-        rollback_called = False
-        original_rollback = session.rollback
-
-        async def track_rollback():
-            nonlocal rollback_called
-            rollback_called = True
-            await original_rollback()
-
         with patch.object(
             session,
-            "commit",
+            "flush",
             new_callable=AsyncMock,
             side_effect=IntegrityError(
                 statement="INSERT",
                 params={},
                 orig=Exception("FK failed"),
             ),
-        ), patch.object(session, "rollback", side_effect=track_rollback):
-            with pytest.raises(ConflictError):
-                await repo.save(conversation.id, "user", "x")
-
-        assert rollback_called, "session.rollback() deveria ter sido chamado"
+        ), pytest.raises(ConflictError):
+            await repo.save(conversation.id, "user", "x")
 
 
 # ========================

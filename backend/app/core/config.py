@@ -21,12 +21,18 @@ class Settings(BaseSettings):
     }
 
     @model_validator(mode="after")
-    def warn_wildcard_cors(self):
-        if "*" in self.cors_origins and not self.debug:
-            raise ValueError(
-                "CORS_ORIGINS=['*'] não é permitido em produção. "
-                "Use origens específicas ou ative DEBUG=true."
-            )
+    def validate_production_settings(self):
+        if not self.debug:
+            if "*" in self.cors_origins:
+                raise ValueError(
+                    "CORS_ORIGINS=['*'] não é permitido em produção. "
+                    "Use origens específicas ou ative DEBUG=true."
+                )
+            if not self.api_key:
+                raise ValueError(
+                    "API_KEY é obrigatória em produção. "
+                    "Defina API_KEY no .env ou ative DEBUG=true."
+                )
         return self
 
 

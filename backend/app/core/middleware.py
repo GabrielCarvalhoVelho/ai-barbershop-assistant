@@ -17,7 +17,7 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
     """Gera um UUID por request e propaga via contextvars + response header."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        rid = request.headers.get(REQUEST_ID_HEADER) or uuid.uuid4().hex
+        rid = uuid.uuid4().hex
         token = request_id_var.set(rid)
 
         try:

@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
+from app.models.enums import ConversationStatus
 
 
 class Conversation(Base):
@@ -20,8 +21,10 @@ class Conversation(Base):
         nullable=False,
         index=True,
     )
-    status: Mapped[str] = mapped_column(
-        String(20), nullable=False, default="active"
+    status: Mapped[ConversationStatus] = mapped_column(
+        SQLEnum(ConversationStatus, values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+        default=ConversationStatus.ACTIVE,
     )
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

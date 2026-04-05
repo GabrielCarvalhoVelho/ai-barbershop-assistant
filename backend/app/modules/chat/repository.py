@@ -9,6 +9,7 @@ from app.core.exceptions import ConflictError, DatabaseError, ServiceUnavailable
 from app.core.logger import get_logger
 from app.models.company import Company
 from app.models.conversation import Conversation
+from app.models.enums import ConversationStatus, MessageSender
 from app.models.message import Message
 from app.models.user import User
 
@@ -29,25 +30,22 @@ class ConversationRepository:
         try:
             self._session.add(conversation)
             await asyncio.wait_for(
-                self._session.commit(), timeout=DB_TIMEOUT_SECONDS
+                self._session.flush(), timeout=DB_TIMEOUT_SECONDS
             )
             await asyncio.wait_for(
                 self._session.refresh(conversation), timeout=DB_TIMEOUT_SECONDS
             )
         except IntegrityError as e:
-            await self._session.rollback()
             logger.warning("IntegrityError ao criar conversa: %s", e.orig)
             raise ConflictError(
                 message="Não foi possível criar a conversa. Verifique os dados enviados.",
             ) from e
         except (OperationalError, asyncio.TimeoutError) as e:
-            await self._session.rollback()
             logger.error("Banco indisponível ao criar conversa: %s", e)
             raise ServiceUnavailableError(
                 message="Serviço de banco de dados indisponível.",
             ) from e
         except SQLAlchemyError as e:
-            await self._session.rollback()
             logger.error("Erro de banco ao criar conversa: %s", e)
             raise DatabaseError(
                 message="Erro ao criar a conversa.",
@@ -91,7 +89,7 @@ class ConversationRepository:
             .where(
                 Conversation.user_id == user_id,
                 Conversation.company_id == company_id,
-                Conversation.status == "active",
+                Conversation.status == ConversationStatus.ACTIVE,
             )
             .order_by(Conversation.started_at.desc())
             .limit(1)
@@ -142,23 +140,21 @@ class ConversationRepository:
             logger.info("Conversa não encontrada para encerrar: id=%s", conversation_id)
             return None
 
-        conversation.status = "closed"
+        conversation.status = ConversationStatus.CLOSED
         conversation.ended_at = datetime.now(timezone.utc)
         try:
             await asyncio.wait_for(
-                self._session.commit(), timeout=DB_TIMEOUT_SECONDS
+                self._session.flush(), timeout=DB_TIMEOUT_SECONDS
             )
             await asyncio.wait_for(
                 self._session.refresh(conversation), timeout=DB_TIMEOUT_SECONDS
             )
         except (OperationalError, asyncio.TimeoutError) as e:
-            await self._session.rollback()
             logger.error("Banco indisponível ao encerrar conversa: %s", e)
             raise ServiceUnavailableError(
                 message="Serviço de banco de dados indisponível.",
             ) from e
         except SQLAlchemyError as e:
-            await self._session.rollback()
             logger.error("Erro de banco ao encerrar conversa: %s", e)
             raise DatabaseError(
                 message="Erro ao encerrar a conversa.",
@@ -188,25 +184,22 @@ class MessageRepository:
         try:
             self._session.add(message)
             await asyncio.wait_for(
-                self._session.commit(), timeout=DB_TIMEOUT_SECONDS
+                self._session.flush(), timeout=DB_TIMEOUT_SECONDS
             )
             await asyncio.wait_for(
                 self._session.refresh(message), timeout=DB_TIMEOUT_SECONDS
             )
         except IntegrityError as e:
-            await self._session.rollback()
             logger.warning("IntegrityError ao salvar mensagem: %s", e.orig)
             raise ConflictError(
                 message="Não foi possível salvar a mensagem. Verifique os dados enviados.",
             ) from e
         except (OperationalError, asyncio.TimeoutError) as e:
-            await self._session.rollback()
             logger.error("Banco indisponível ao salvar mensagem: %s", e)
             raise ServiceUnavailableError(
                 message="Serviço de banco de dados indisponível.",
             ) from e
         except SQLAlchemyError as e:
-            await self._session.rollback()
             logger.error("Erro de banco ao salvar mensagem: %s", e)
             raise DatabaseError(
                 message="Erro ao salvar a mensagem.",
@@ -227,19 +220,19 @@ class MessageRepository:
         )
         user_msg = Message(
             conversation_id=conversation_id,
-            sender="user",
+            sender=MessageSender.USER,
             content=user_content,
         )
         bot_msg = Message(
             conversation_id=conversation_id,
-            sender="bot",
+            sender=MessageSender.BOT,
             content=bot_content,
         )
         try:
             self._session.add(user_msg)
             self._session.add(bot_msg)
             await asyncio.wait_for(
-                self._session.commit(), timeout=DB_TIMEOUT_SECONDS
+                self._session.flush(), timeout=DB_TIMEOUT_SECONDS
             )
             await asyncio.wait_for(
                 self._session.refresh(user_msg), timeout=DB_TIMEOUT_SECONDS
@@ -248,19 +241,16 @@ class MessageRepository:
                 self._session.refresh(bot_msg), timeout=DB_TIMEOUT_SECONDS
             )
         except IntegrityError as e:
-            await self._session.rollback()
             logger.warning("IntegrityError ao salvar par de mensagens: %s", e.orig)
             raise ConflictError(
                 message="Não foi possível salvar as mensagens. Verifique os dados enviados.",
             ) from e
         except (OperationalError, asyncio.TimeoutError) as e:
-            await self._session.rollback()
             logger.error("Banco indisponível ao salvar par de mensagens: %s", e)
             raise ServiceUnavailableError(
                 message="Serviço de banco de dados indisponível.",
             ) from e
         except SQLAlchemyError as e:
-            await self._session.rollback()
             logger.error("Erro de banco ao salvar par de mensagens: %s", e)
             raise DatabaseError(
                 message="Erro ao salvar as mensagens.",

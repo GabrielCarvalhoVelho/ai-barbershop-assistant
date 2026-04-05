@@ -1,9 +1,10 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, Enum as SQLEnum, ForeignKey, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.database import Base
+from app.models.enums import MessageSender
 
 
 class Message(Base):
@@ -15,7 +16,10 @@ class Message(Base):
         nullable=False,
         index=True,
     )
-    sender: Mapped[str] = mapped_column(String(10), nullable=False)
+    sender: Mapped[MessageSender] = mapped_column(
+        SQLEnum(MessageSender, values_callable=lambda e: [m.value for m in e]),
+        nullable=False,
+    )
     content: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

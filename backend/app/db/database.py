@@ -19,8 +19,14 @@ class Base(DeclarativeBase):
 
 
 async def get_session():
+    """Uma transação por request: commit no sucesso, rollback em qualquer erro."""
     async with async_session() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 async def create_tables():

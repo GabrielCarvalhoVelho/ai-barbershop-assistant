@@ -8,7 +8,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: Histórico de conversas (concluída — checklists 1 a 6 completos)** — arquitetura modular por domínio de negócio, banco de dados async, 4 models, 6 repositories, persistência atômica no fluxo de chat (save_pair), CRUD de conversas (criar, detalhar, listar mensagens paginado, encerrar), validação de user/company contra o banco, seed de dev, segurança reforçada, respostas padronizadas com envelope, hierarquia de exceções com error codes, logging estruturado com request ID e hardening em todas as camadas. Sem IA real ainda.
+**Fase: Hardening de segurança (concluída — 5 itens de alta prioridade resolvidos)** — arquitetura modular por domínio de negócio, banco de dados async com Unit of Work (transação única por request), 4 models com enums tipados, 6 repositories, persistência atômica no fluxo de chat (save_pair), CRUD de conversas com validação de ownership (IDOR protection), validação de user/company contra o banco, seed de dev, segurança reforçada (API key obrigatória em prod, request ID server-only), respostas padronizadas com envelope, hierarquia de exceções com error codes, logging estruturado com request ID e hardening em todas as camadas. Sem IA real ainda.
 
 - FastAPI + Uvicorn rodando com metadados (title, version via `Settings`)
 - **Estrutura modular por domínio:** `app/modules/chat/` e `app/modules/health/` — cada módulo com routes, controller, service, repository e schemas próprios
@@ -18,8 +18,10 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - `POST /api/v1/chat` recebe `message`, `user_id`, `company_id`, `conversation_id` (opcional)
   - Valida user e company contra o banco (404 se não existem)
   - Sem `conversation_id`: cria nova conversa automaticamente
-  - Com `conversation_id`: reutiliza conversa existente (404 se não encontrada, 400 se encerrada)
+  - Com `conversation_id`: reutiliza conversa existente (404 se não encontrada, 403 se não pertence ao user/company, 400 se encerrada)
+  - **Validação de ownership:** verifica que `conversation.user_id == request.user_id` e `conversation.company_id == request.company_id` antes de qualquer operação (proteção contra IDOR)
   - Salva mensagem do user → gera resposta (echo por enquanto) → salva resposta do bot → retorna `{response, conversation_id}`
+  - **Transação única (Unit of Work):** toda a operação (criar conversa + salvar mensagens) roda em uma única transação — se qualquer etapa falhar, tudo é desfeito (sem conversas órfãs)
   - Chat retorna echo: `"Você disse: {message}"`
 - **CRUD de conversas:**
   - `POST /api/v1/conversations` — cria conversa manualmente (recebe `user_id`, `company_id`, valida contra o banco, retorna 201)
@@ -39,7 +41,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - Erros documentados no Swagger/OpenAPI em todos os endpoints (400, 401, 403, 404, 409, 422, 429, 500, 503)
 - **Hierarquia de exceções customizadas (`AppError` base):**
   - `AuthenticationError` (401, AUTH_001) — API key ausente
-  - `AuthorizationError` (403, AUTH_002) — API key inválida
+  - `AuthorizationError` (403, AUTH_002) — API key inválida ou ownership de conversa violado
   - `BusinessError` (400, CHAT_001) — regra de negócio
   - `ValidationError` (422, VAL_001) — validação customizada
   - `NotFoundError` (404, RES_001) — recurso não encontrado
@@ -57,17 +59,19 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - `SQLAlchemyError` → 500 (fallback genérico de banco)
   - Middleware catch-all → 500 com stack trace logado (exc_info=True)
 - **Logging estruturado com request ID:**
-  - `RequestIDMiddleware`: gera UUID hex por request, propaga via `contextvars`, retorna no header `X-Request-ID`
+  - `RequestIDMiddleware`: gera UUID hex por request **sempre server-side** (ignora header do cliente — previne log injection), propaga via `contextvars`, retorna no header `X-Request-ID`
   - `RequestIDFilter`: injeta `request_id` em todo log record automaticamente
   - Formato: `timestamp | LEVEL | module | rid=abc123 | mensagem`
   - `request_id` no body de `ErrorResponse` (correlação header ↔ body)
   - Logging em todas as camadas: controllers (início/fim), repositories (operações DB), services (mensagem recebida)
   - Stack traces completos nos erros 500 (logados, nunca expostos ao cliente)
 - **Hardening nas camadas:**
-  - Repository: try-except traduz `IntegrityError` → `ConflictError`, `OperationalError`/`TimeoutError` → `ServiceUnavailableError`, `SQLAlchemyError` → `DatabaseError`; rollback automático após erro
+  - Repository: try-except traduz `IntegrityError` → `ConflictError`, `OperationalError`/`TimeoutError` → `ServiceUnavailableError`, `SQLAlchemyError` → `DatabaseError`
+  - **Unit of Work:** repositories usam `flush()` (não `commit()`). O `get_session()` gerencia a transação — `commit()` no sucesso, `rollback()` em qualquer erro. Uma transação por request HTTP.
   - Controller: captura `AppError` do repository, loga com contexto e re-raise
   - Timeout guard: `asyncio.wait_for(..., timeout=10s)` em todas as operações async de banco
   - Validation handler: extrai field name do Pydantic error, inclui no `ErrorDetail.field`
+- **Validações de produção (`model_validator` em Settings):** CORS wildcard bloqueado e API key obrigatória quando `DEBUG=false`. Em modo debug, ambas são relaxadas para conveniência de dev.
 - CORS seguro por padrão: origens restritas (`http://localhost:3000`), wildcard `["*"]` só permitido com `DEBUG=true`
 - Rate limiting via `slowapi` (padrão: `10/minute`, configurável via `RATE_LIMIT`). Aplicado ao `/chat` e `/conversations*`, rotas `/` e `/health` isentas
 - Autenticação por API key (`X-API-Key` header) no `/chat` e `/conversations*` com `secrets.compare_digest` (proteção contra timing attack)
@@ -82,15 +86,17 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 - **Migrations (Alembic):**
   - `alembic.ini` + `migrations/env.py` configurados com async + URL dinâmica via Settings
   - Migration inicial: cria 4 tabelas, 4 FKs, 4 índices, 2 UNIQUE constraints
+  - Migration `f97c79dc2341`: converte `status` e `sender` de VARCHAR para ENUM nativo no PostgreSQL (com `USING cast`, `checkfirst=True`)
 - **4 Models SQLAlchemy** (centralizados em `app/models/`):
   - `Company`: id, name, address, phone, created_at, updated_at
   - `User`: id, company_id (FK RESTRICT), name, phone (UNIQUE), email (UNIQUE), created_at, updated_at
-  - `Conversation`: id, user_id (FK RESTRICT), company_id (FK RESTRICT), status, started_at, ended_at
-  - `Message`: id, conversation_id (FK CASCADE), sender, content, created_at
+  - `Conversation`: id, user_id (FK RESTRICT), company_id (FK RESTRICT), status (`ConversationStatus` enum: active/closed), started_at, ended_at
+  - `Message`: id, conversation_id (FK CASCADE), sender (`MessageSender` enum: user/bot), content, created_at
+  - **Enums tipados** (`app/models/enums.py`): `ConversationStatus` (active, closed) e `MessageSender` (user, bot) — ambos `str, Enum`. Usados nos models (SQLAlchemy `Enum` type), controllers, repositories e schemas. Previnem dados inválidos na fonte.
 - Configuração centralizada: `pydantic-settings` + `.env` (7 campos: app_name, app_version, debug, cors_origins, api_key, rate_limit, database_url)
 - Logger estruturado com `RequestIDFilter` + lazy formatting (`%s`) — sem log injection
-- 340 testes automatizados — todos passando
-- `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db` (SQLite in-memory com seed + FK enforcement), `db_session`
+- **358 testes automatizados** — todos passando
+- `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db` (SQLite in-memory com seed de 2 companies + 2 users + FK enforcement), `db_session`. `os.environ.setdefault("DEBUG", "true")` antes dos imports para compatibilidade com o validator de API key.
 - Dependências separadas: `requirements.txt` (prod) e `requirements-dev.txt` (dev)
 
 ### Catálogo de Error Codes
@@ -99,7 +105,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 |------|---------|------|-----------|
 | APP_000 | Geral | 500 | Erro não tratado (catch-all) |
 | AUTH_001 | Autenticação | 401 | API key ausente |
-| AUTH_002 | Autorização | 403 | API key inválida |
+| AUTH_002 | Autorização | 403 | API key inválida ou ownership violado |
 | CHAT_001 | Chat | 400 | Conteúdo repetitivo (spam) ou conversa encerrada |
 | VAL_001 | Validação | 422 | Erro de validação (Pydantic) |
 | RES_001 | Recurso | 404 | Recurso não encontrado |
@@ -139,13 +145,14 @@ backend/
       exceptions.py                # Hierarquia: AppError → 9 subclasses
       logger.py                    # Logger com RequestIDFilter
     db/
-      database.py                  # Engine async, session factory, Base, lifecycle helpers
+      database.py                  # Engine async, session factory, Base, get_session (Unit of Work), lifecycle helpers
       seed.py                      # Seed de dev (Company + User), idempotente, só DEBUG=true
     models/                        # Models SQLAlchemy (centralizados, compartilhados)
+      enums.py                     # ConversationStatus (active/closed), MessageSender (user/bot)
       company.py                   # Model Company
       user.py                      # Model User (FK → Company)
-      conversation.py              # Model Conversation (FK → User + Company)
-      message.py                   # Model Message (FK → Conversation)
+      conversation.py              # Model Conversation (FK → User + Company, status enum)
+      message.py                   # Model Message (FK → Conversation, sender enum)
     schemas/                       # Schemas compartilhados (envelope de resposta)
       base_schema.py               # BaseResponse, SuccessResponse, ErrorDetail
       error_schema.py              # ErrorResponse
@@ -157,12 +164,12 @@ backend/
   tests/
     modules/
       chat/
-        test_controller.py         # 14 testes do ChatController (nova conversa, existente, conversa fechada, user/company 404, delegação)
+        test_controller.py         # 19 testes do ChatController (nova conversa, existente, conversa fechada, user/company 404, ownership IDOR, delegação)
         test_conversation_controller.py  # 24 testes do ConversationController (create, get_by_id, get_messages, close)
         test_service.py            # 11 testes do chat_service
         test_repository.py         # 26 testes (ConversationRepository + MessageRepository + save_pair)
         test_schemas.py            # 39 testes (ChatRequest, ChatResponse, MessageResponse, ConversationResponse, ConversationDetailResponse)
-        test_routes.py             # 21 testes de integração do /chat (inclui conversa fechada e persistência)
+        test_routes.py             # 26 testes de integração do /chat (inclui conversa fechada, persistência, ownership IDOR, atomicidade transacional)
         test_conversation_routes.py  # 32 testes de integração do /conversations (CRUD completo + validação + paginação)
       health/
         test_controller.py         # 2 testes do HealthController
@@ -173,14 +180,14 @@ backend/
       test_exceptions.py           # 52 testes da hierarquia de exceções
       test_error_handlers.py       # 17 testes dos handlers
       test_logging.py              # 15 testes de request ID
-      test_hardening.py            # 22 testes de hardening (Message + Conversation repos, controller, validation)
-      test_security.py             # 12 testes de segurança
+      test_hardening.py            # 20 testes de hardening (Message + Conversation repos, controller, validation)
+      test_security.py             # 16 testes de segurança (rate limit, API key auth, CORS config, API key obrigatória em prod)
     conftest.py                    # Fixtures: client, reset_rate_limiter, setup_db, db_session
-    test_models.py                 # 27 testes dos models
+    test_models.py                 # 31 testes dos models (inclui validação de enum rejeitando valores inválidos)
     test_root.py                   # 1 teste do GET /
 ```
 
-**Fluxo do chat:** Cliente → Routes → RequestIDMiddleware → Auth + Rate Limit → Controller (valida user/company → resolve/cria conversa → valida conversa ativa → persiste user msg → Service gera resposta → persiste bot msg) → SuccessResponse com `{response, conversation_id}`
+**Fluxo do chat:** Cliente → Routes → RequestIDMiddleware (UUID server-side) → Auth + Rate Limit → Controller (valida user/company → resolve/cria conversa → valida ownership → valida conversa ativa → Service gera resposta → persiste user+bot msg via save_pair) → `get_session` commit → SuccessResponse com `{response, conversation_id}`. Se qualquer etapa falhar, `get_session` faz rollback de tudo (Unit of Work).
 
 **Fluxo de erros:** Exceção → Exception Handler (AppError/HTTP/Validation/RateLimit/DB) → ErrorResponse padronizado com code + request_id → Cliente
 
@@ -231,6 +238,7 @@ python -m pytest tests/ -v
 8. ~~Melhorar tratamento de erros (níveis e tipos de execução)~~ ✅
 9. ~~Refatorar estrutura por módulos (chat, health)~~ ✅
 10. ~~Histórico de conversas (CRUD completo, persistência atômica, 340 testes)~~ ✅
+10.1. ~~Hardening de segurança (ownership IDOR, API key obrigatória em prod, enums tipados, Unit of Work, request ID server-only — 358 testes)~~ ✅
 11. Integração com IA generativa (OpenAI API + LangChain)
 12. RAG (Retrieval Augmented Generation) para respostas contextualizadas
 13. Agendamento automático de horários

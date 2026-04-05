@@ -327,3 +327,46 @@ class TestChatBusiness400:
         assert body["error"]["code"] == "CHAT_001"
         assert "repetitivo" in body["error"]["message"]
         assert "details" not in body["error"]
+
+
+# ========================
+# POST /chat - atomicidade transacional
+# ========================
+
+
+class TestChatTransactionAtomicity:
+    def test_no_orphan_conversation_on_business_error(self, client):
+        """Se o service rejeita a mensagem (spam), a conversa criada deve ser desfeita.
+
+        Fluxo: controller cria conversa → service.generate_response lança BusinessError
+        → transação faz rollback → conversa não persiste.
+        """
+        # Envia spam — conversation é criada internamente, mas generate_response falha
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
+        )
+        assert response.status_code == 400
+
+        # Se a transação fosse commitada antes do erro, a conversa ficaria órfã.
+        # Com Unit of Work, o rollback desfaz tudo. Verifica que nenhuma conversa existe.
+        r = client.get("/api/v1/conversations/1")
+        assert r.status_code == 404
+
+    def test_successful_chat_persists_conversation_and_messages(self, client):
+        """Garante que no caso de sucesso, conversa e mensagens são persistidas."""
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Quero agendar", "user_id": 1, "company_id": 1},
+        )
+        assert response.status_code == 200
+        conv_id = response.json()["data"]["conversation_id"]
+
+        # Conversa existe
+        r = client.get(f"/api/v1/conversations/{conv_id}")
+        assert r.status_code == 200
+
+        # Mensagens existem
+        r = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        assert r.status_code == 200
+        assert r.json()["data"]["pagination"]["total"] == 2

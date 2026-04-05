@@ -1,4 +1,9 @@
 import asyncio
+import os
+
+# DEBUG=true antes de qualquer import da app — garante que Settings()
+# não exija API_KEY no ambiente de teste.
+os.environ.setdefault("DEBUG", "true")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,7 +38,12 @@ test_async_session = async_sessionmaker(
 
 async def override_get_session():
     async with test_async_session() as session:
-        yield session
+        try:
+            yield session
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
 
 
 app.dependency_overrides[get_session] = override_get_session

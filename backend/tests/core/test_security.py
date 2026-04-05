@@ -1,3 +1,4 @@
+import os
 from unittest.mock import patch
 from fastapi.testclient import TestClient
 
@@ -97,7 +98,7 @@ class TestAuthWithKeyConfigured:
 
 
 # ========================
-# CORS
+# Validações de produção (Settings)
 # ========================
 
 class TestCorsConfig:
@@ -105,7 +106,7 @@ class TestCorsConfig:
         """CORS=['*'] + DEBUG=false deve falhar."""
         with patch.dict(
             "os.environ",
-            {"CORS_ORIGINS": '["*"]', "DEBUG": "false"},
+            {"CORS_ORIGINS": '["*"]', "DEBUG": "false", "API_KEY": "some-key"},
             clear=False,
         ):
             from app.core.config import Settings
@@ -127,3 +128,58 @@ class TestCorsConfig:
 
             s = Settings()
             assert s.cors_origins == ["*"]
+
+
+class TestApiKeyConfig:
+    def test_empty_api_key_blocked_in_production(self):
+        """API_KEY='' + DEBUG=false deve falhar."""
+        with patch.dict(
+            "os.environ",
+            {"API_KEY": "", "DEBUG": "false"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            try:
+                Settings()
+                assert False, "Deveria ter levantado ValueError"
+            except ValueError as e:
+                assert "API_KEY é obrigatória" in str(e)
+
+    def test_missing_api_key_blocked_in_production(self):
+        """Sem API_KEY + DEBUG=false deve falhar."""
+        env = os.environ.copy()
+        env.pop("API_KEY", None)
+        env["DEBUG"] = "false"
+        with patch.dict("os.environ", env, clear=True):
+            from app.core.config import Settings
+
+            try:
+                Settings()
+                assert False, "Deveria ter levantado ValueError"
+            except ValueError as e:
+                assert "API_KEY é obrigatória" in str(e)
+
+    def test_api_key_allowed_empty_in_debug(self):
+        """API_KEY='' + DEBUG=true é permitido (dev mode)."""
+        with patch.dict(
+            "os.environ",
+            {"API_KEY": "", "DEBUG": "true"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            s = Settings()
+            assert s.api_key == ""
+
+    def test_api_key_set_in_production_succeeds(self):
+        """API_KEY definida + DEBUG=false deve funcionar."""
+        with patch.dict(
+            "os.environ",
+            {"API_KEY": "my-prod-secret", "DEBUG": "false"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            s = Settings()
+            assert s.api_key == "my-prod-secret"
