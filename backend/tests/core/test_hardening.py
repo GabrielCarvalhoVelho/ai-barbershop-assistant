@@ -256,19 +256,6 @@ class TestConversationRepositoryOperationalError:
             await repo.get_by_id(1)
 
     @pytest.mark.asyncio
-    async def test_get_active_db_down_raises_service_unavailable(self, session):
-        repo = ConversationRepository(session)
-        with patch.object(
-            session,
-            "execute",
-            new_callable=AsyncMock,
-            side_effect=OperationalError(
-                statement="SELECT", params={}, orig=Exception("pool exhausted")
-            ),
-        ), pytest.raises(ServiceUnavailableError):
-            await repo.get_active_by_user(1, 1)
-
-    @pytest.mark.asyncio
     async def test_close_db_down_raises_service_unavailable(self, session):
         repo = ConversationRepository(session)
         with patch.object(

@@ -2,7 +2,5 @@ from pydantic import BaseModel, Field
 
 
 class HealthResponse(BaseModel):
-    status: str = Field(
-        default="ok",
-        examples=["ok"],
-    )
+    status: str = Field(default="ok", examples=["ok"])
+    database: str = Field(default="ok", examples=["ok", "unavailable"])

@@ -1,13 +1,18 @@
 from app.core.exceptions import AppError, AuthorizationError, BusinessError, NotFoundError
 from app.core.logger import get_logger
 from app.models.enums import ConversationStatus
-from app.modules.chat.repository import (
-    CompanyRepository,
-    ConversationRepository,
-    MessageRepository,
-    UserRepository,
+from app.modules.chat.repository import ConversationRepository, MessageRepository
+from app.repositories import CompanyRepository, UserRepository
+from app.modules.chat.schemas import (
+    ChatRequest,
+    ChatResponse,
+    ConversationMessagesResponse,
+    ConversationResponse,
+    ConversationSummaryResponse,
+    CreateConversationRequest,
+    MessageResponse,
+    PaginationResponse,
 )
-from app.modules.chat.schemas import ChatRequest, CreateConversationRequest
 from app.modules.chat.service import generate_response
 from app.schemas.base_schema import SuccessResponse
 
@@ -89,10 +94,10 @@ class ChatController:
         )
 
         return SuccessResponse(
-            data={
-                "response": response_text,
-                "conversation_id": conversation_id,
-            }
+            data=ChatResponse(
+                response=response_text,
+                conversation_id=conversation_id,
+            ).model_dump()
         )
 
 
@@ -130,14 +135,14 @@ class ConversationController:
         logger.info("Conversa criada: id=%s", conversation.id)
 
         return SuccessResponse(
-            data={
-                "id": conversation.id,
-                "user_id": conversation.user_id,
-                "company_id": conversation.company_id,
-                "status": conversation.status,
-                "started_at": conversation.started_at.isoformat(),
-                "ended_at": None,
-            }
+            data=ConversationSummaryResponse(
+                id=conversation.id,
+                user_id=conversation.user_id,
+                company_id=conversation.company_id,
+                status=conversation.status,
+                started_at=conversation.started_at,
+                ended_at=conversation.ended_at,
+            ).model_dump()
         )
 
     @staticmethod
@@ -163,15 +168,15 @@ class ConversationController:
         )
 
         return SuccessResponse(
-            data={
-                "id": conversation.id,
-                "user_id": conversation.user_id,
-                "company_id": conversation.company_id,
-                "status": conversation.status,
-                "started_at": conversation.started_at.isoformat(),
-                "ended_at": conversation.ended_at.isoformat() if conversation.ended_at else None,
-                "message_count": message_count,
-            }
+            data=ConversationResponse(
+                id=conversation.id,
+                user_id=conversation.user_id,
+                company_id=conversation.company_id,
+                status=conversation.status,
+                started_at=conversation.started_at,
+                ended_at=conversation.ended_at,
+                message_count=message_count,
+            ).model_dump()
         )
 
     @staticmethod
@@ -208,23 +213,23 @@ class ConversationController:
         )
 
         return SuccessResponse(
-            data={
-                "conversation_id": conversation_id,
-                "messages": [
-                    {
-                        "id": msg.id,
-                        "sender": msg.sender,
-                        "content": msg.content,
-                        "created_at": msg.created_at.isoformat(),
-                    }
+            data=ConversationMessagesResponse(
+                conversation_id=conversation_id,
+                messages=[
+                    MessageResponse(
+                        id=msg.id,
+                        sender=msg.sender,
+                        content=msg.content,
+                        created_at=msg.created_at,
+                    )
                     for msg in messages
                 ],
-                "pagination": {
-                    "limit": limit,
-                    "offset": offset,
-                    "total": total,
-                },
-            }
+                pagination=PaginationResponse(
+                    limit=limit,
+                    offset=offset,
+                    total=total,
+                ),
+            ).model_dump()
         )
 
     @staticmethod
@@ -254,12 +259,12 @@ class ConversationController:
         )
 
         return SuccessResponse(
-            data={
-                "id": conversation.id,
-                "user_id": conversation.user_id,
-                "company_id": conversation.company_id,
-                "status": conversation.status,
-                "started_at": conversation.started_at.isoformat(),
-                "ended_at": conversation.ended_at.isoformat() if conversation.ended_at else None,
-            }
+            data=ConversationSummaryResponse(
+                id=conversation.id,
+                user_id=conversation.user_id,
+                company_id=conversation.company_id,
+                status=conversation.status,
+                started_at=conversation.started_at,
+                ended_at=conversation.ended_at,
+            ).model_dump()
         )

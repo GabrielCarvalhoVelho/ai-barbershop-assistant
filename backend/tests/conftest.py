@@ -1,4 +1,3 @@
-import asyncio
 import os
 
 # DEBUG=true antes de qualquer import da app — garante que Settings()
@@ -6,6 +5,7 @@ import os
 os.environ.setdefault("DEBUG", "true")
 
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
@@ -55,45 +55,39 @@ def reset_rate_limiter():
     yield
 
 
-@pytest.fixture(autouse=True)
-def setup_db():
-    loop = asyncio.new_event_loop()
+@pytest_asyncio.fixture(autouse=True)
+async def setup_db():
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-    async def _setup():
-        async with test_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
-        async with test_async_session() as session:
-            company = Company(name="Barbearia Teste")
-            session.add(company)
-            await session.commit()
-            await session.refresh(company)
-            user = User(
-                company_id=company.id, name="Teste", phone="+5511999000000"
-            )
-            session.add(user)
-            await session.commit()
+    async with test_async_session() as session:
+        company = Company(name="Barbearia Teste")
+        session.add(company)
+        await session.commit()
+        await session.refresh(company)
 
-            # Segunda company + user para testes de ownership/isolamento
-            company2 = Company(name="Outra Barbearia")
-            session.add(company2)
-            await session.commit()
-            await session.refresh(company2)
-            user2 = User(
-                company_id=company2.id,
-                name="Outro Cliente",
-                phone="+5511988888888",
-            )
-            session.add(user2)
-            await session.commit()
+        user = User(company_id=company.id, name="Teste", phone="+5511999000000")
+        session.add(user)
+        await session.commit()
 
-    async def _teardown():
-        async with test_engine.begin() as conn:
-            await conn.run_sync(Base.metadata.drop_all)
+        # Segunda company + user para testes de ownership/isolamento
+        company2 = Company(name="Outra Barbearia")
+        session.add(company2)
+        await session.commit()
+        await session.refresh(company2)
 
-    loop.run_until_complete(_setup())
+        user2 = User(
+            company_id=company2.id,
+            name="Outro Cliente",
+            phone="+5511988888888",
+        )
+        session.add(user2)
+        await session.commit()
+
     yield
-    loop.run_until_complete(_teardown())
-    loop.close()
+
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest.fixture
@@ -101,15 +95,7 @@ def client():
     return TestClient(app)
 
 
-@pytest.fixture
-def db_session():
-    loop = asyncio.new_event_loop()
-
-    async def _create():
-        session = test_async_session()
-        return session
-
-    session = loop.run_until_complete(_create())
-    yield session
-    loop.run_until_complete(session.close())
-    loop.close()
+@pytest_asyncio.fixture
+async def db_session():
+    async with test_async_session() as session:
+        yield session

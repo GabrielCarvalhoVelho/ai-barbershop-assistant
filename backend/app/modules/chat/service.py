@@ -30,6 +30,6 @@ def generate_response(message: str) -> str:
     message = _sanitize_message(message)
     _validate_business_rules(message)
 
-    logger.info("Mensagem recebida: %s", message)
+    logger.info("Mensagem recebida: message_length=%d", len(message))
 
     return f"Você disse: {message}"

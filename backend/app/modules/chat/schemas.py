@@ -78,6 +78,7 @@ class ChatResponse(BaseModel):
         ...,
         examples=["Olá! Oferecemos corte, barba e sobrancelha. Deseja agendar?"],
     )
+    conversation_id: int = Field(..., examples=[1])
 
 
 # ========================
@@ -97,8 +98,23 @@ class MessageResponse(BaseModel):
 # ========================
 
 
-class ConversationResponse(BaseModel):
+class ConversationSummaryResponse(BaseModel):
+    """Resposta de criação e encerramento de conversa (sem message_count)."""
+
     id: int = Field(..., examples=[1])
+    user_id: int = Field(..., examples=[1])
+    company_id: int = Field(..., examples=[1])
+    status: ConversationStatus = Field(..., examples=["active"])
+    started_at: datetime = Field(..., examples=["2026-03-30T14:00:00Z"])
+    ended_at: datetime | None = Field(None, examples=[None])
+
+
+class ConversationResponse(BaseModel):
+    """Resposta de detalhes de conversa (com message_count)."""
+
+    id: int = Field(..., examples=[1])
+    user_id: int = Field(..., examples=[1])
+    company_id: int = Field(..., examples=[1])
     status: ConversationStatus = Field(..., examples=["active"])
     started_at: datetime = Field(..., examples=["2026-03-30T14:00:00Z"])
     ended_at: datetime | None = Field(None, examples=[None])
@@ -111,3 +127,17 @@ class ConversationDetailResponse(BaseModel):
     started_at: datetime = Field(..., examples=["2026-03-30T14:00:00Z"])
     ended_at: datetime | None = Field(None, examples=[None])
     messages: list[MessageResponse] = Field(..., examples=[[]])
+
+
+class PaginationResponse(BaseModel):
+    limit: int = Field(..., examples=[50])
+    offset: int = Field(..., examples=[0])
+    total: int = Field(..., examples=[10])
+
+
+class ConversationMessagesResponse(BaseModel):
+    """Resposta paginada de mensagens de uma conversa."""
+
+    conversation_id: int = Field(..., examples=[1])
+    messages: list[MessageResponse] = Field(..., examples=[[]])
+    pagination: PaginationResponse

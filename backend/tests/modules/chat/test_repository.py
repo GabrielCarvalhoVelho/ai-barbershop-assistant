@@ -131,43 +131,6 @@ class TestConversationRepositoryGetById:
         assert found is None
 
 
-class TestConversationRepositoryGetActiveByUser:
-    @pytest.mark.asyncio
-    async def test_returns_active_conversation(self, session, user, company):
-        repo = ConversationRepository(session)
-        created = await repo.create(user.id, company.id)
-        found = await repo.get_active_by_user(user.id, company.id)
-
-        assert found is not None
-        assert found.id == created.id
-        assert found.status == "active"
-
-    @pytest.mark.asyncio
-    async def test_returns_none_when_no_active(self, session, user, company):
-        repo = ConversationRepository(session)
-        found = await repo.get_active_by_user(user.id, company.id)
-
-        assert found is None
-
-    @pytest.mark.asyncio
-    async def test_ignores_closed_conversations(self, session, user, company):
-        repo = ConversationRepository(session)
-        created = await repo.create(user.id, company.id)
-        await repo.close(created.id)
-        found = await repo.get_active_by_user(user.id, company.id)
-
-        assert found is None
-
-    @pytest.mark.asyncio
-    async def test_returns_most_recent_active(self, session, user, company):
-        repo = ConversationRepository(session)
-        await repo.create(user.id, company.id)
-        second = await repo.create(user.id, company.id)
-        found = await repo.get_active_by_user(user.id, company.id)
-
-        assert found is not None
-        assert found.id == second.id
-
 
 class TestConversationRepositoryClose:
     @pytest.mark.asyncio

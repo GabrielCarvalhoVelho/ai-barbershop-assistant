@@ -7,8 +7,11 @@ from app.modules.chat.schemas import (
     ChatRequest,
     ChatResponse,
     ConversationDetailResponse,
+    ConversationMessagesResponse,
     ConversationResponse,
+    ConversationSummaryResponse,
     MessageResponse,
+    PaginationResponse,
 )
 
 IDS = {"user_id": 1, "company_id": 1}
@@ -161,8 +164,13 @@ class TestChatRequestConversationId:
 
 class TestChatResponse:
     def test_creates_with_response(self):
-        res = ChatResponse(response="Olá!")
+        res = ChatResponse(response="Olá!", conversation_id=1)
         assert res.response == "Olá!"
+        assert res.conversation_id == 1
+
+    def test_rejects_missing_conversation_id(self):
+        with pytest.raises(ValidationError):
+            ChatResponse(response="Olá!")
 
 
 # ========================
@@ -198,12 +206,40 @@ class TestMessageResponse:
 # ========================
 
 
+class TestConversationSummaryResponse:
+    def test_creates_active_conversation(self):
+        conv = ConversationSummaryResponse(
+            id=1, user_id=1, company_id=1, status="active", started_at=NOW
+        )
+        assert conv.id == 1
+        assert conv.user_id == 1
+        assert conv.company_id == 1
+        assert conv.status == "active"
+        assert conv.ended_at is None
+
+    def test_creates_closed_conversation(self):
+        ended = datetime(2026, 3, 30, 15, 0, 0, tzinfo=timezone.utc)
+        conv = ConversationSummaryResponse(
+            id=1, user_id=1, company_id=1, status="closed",
+            started_at=NOW, ended_at=ended,
+        )
+        assert conv.status == "closed"
+        assert conv.ended_at == ended
+
+    def test_rejects_missing_user_id(self):
+        with pytest.raises(ValidationError):
+            ConversationSummaryResponse(id=1, company_id=1, status="active", started_at=NOW)
+
+
 class TestConversationResponse:
     def test_creates_active_conversation(self):
         conv = ConversationResponse(
-            id=1, status="active", started_at=NOW, message_count=3
+            id=1, user_id=1, company_id=1, status="active",
+            started_at=NOW, message_count=3,
         )
         assert conv.id == 1
+        assert conv.user_id == 1
+        assert conv.company_id == 1
         assert conv.status == "active"
         assert conv.started_at == NOW
         assert conv.ended_at is None
@@ -212,24 +248,24 @@ class TestConversationResponse:
     def test_creates_closed_conversation(self):
         ended = datetime(2026, 3, 30, 15, 0, 0, tzinfo=timezone.utc)
         conv = ConversationResponse(
-            id=1,
-            status="closed",
-            started_at=NOW,
-            ended_at=ended,
-            message_count=10,
+            id=1, user_id=2, company_id=3,
+            status="closed", started_at=NOW, ended_at=ended, message_count=10,
         )
         assert conv.status == "closed"
         assert conv.ended_at == ended
 
     def test_ended_at_defaults_to_none(self):
         conv = ConversationResponse(
-            id=1, status="active", started_at=NOW, message_count=0
+            id=1, user_id=1, company_id=1, status="active",
+            started_at=NOW, message_count=0,
         )
         assert conv.ended_at is None
 
     def test_rejects_missing_message_count(self):
         with pytest.raises(ValidationError):
-            ConversationResponse(id=1, status="active", started_at=NOW)
+            ConversationResponse(
+                id=1, user_id=1, company_id=1, status="active", started_at=NOW
+            )
 
 
 # ========================
@@ -263,3 +299,49 @@ class TestConversationDetailResponse:
     def test_rejects_missing_messages(self):
         with pytest.raises(ValidationError):
             ConversationDetailResponse(id=1, status="active", started_at=NOW)
+
+
+# ========================
+# PaginationResponse
+# ========================
+
+
+class TestPaginationResponse:
+    def test_creates_with_all_fields(self):
+        p = PaginationResponse(limit=50, offset=0, total=100)
+        assert p.limit == 50
+        assert p.offset == 0
+        assert p.total == 100
+
+    def test_rejects_missing_total(self):
+        with pytest.raises(ValidationError):
+            PaginationResponse(limit=50, offset=0)
+
+
+# ========================
+# ConversationMessagesResponse
+# ========================
+
+
+class TestConversationMessagesResponse:
+    def test_creates_with_empty_messages(self):
+        p = PaginationResponse(limit=50, offset=0, total=0)
+        resp = ConversationMessagesResponse(
+            conversation_id=1, messages=[], pagination=p
+        )
+        assert resp.conversation_id == 1
+        assert resp.messages == []
+        assert resp.pagination.total == 0
+
+    def test_creates_with_messages(self):
+        msg = MessageResponse(id=1, sender="user", content="Oi", created_at=NOW)
+        p = PaginationResponse(limit=50, offset=0, total=1)
+        resp = ConversationMessagesResponse(
+            conversation_id=1, messages=[msg], pagination=p
+        )
+        assert len(resp.messages) == 1
+        assert resp.messages[0].content == "Oi"
+
+    def test_rejects_missing_pagination(self):
+        with pytest.raises(ValidationError):
+            ConversationMessagesResponse(conversation_id=1, messages=[])

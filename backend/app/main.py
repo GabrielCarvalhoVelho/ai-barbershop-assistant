@@ -34,8 +34,8 @@ import app.models  # noqa: F401 — registra models no SQLAlchemy antes do creat
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await create_tables()
     if settings.debug:
+        await create_tables()
         async with async_session() as session:
             await seed_dev_data(session)
     yield

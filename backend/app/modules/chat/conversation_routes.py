@@ -5,12 +5,8 @@ from app.core.auth import require_api_key
 from app.core.rate_limiter import limiter
 from app.db.database import get_session
 from app.modules.chat.controller import ConversationController
-from app.modules.chat.repository import (
-    CompanyRepository,
-    ConversationRepository,
-    MessageRepository,
-    UserRepository,
-)
+from app.modules.chat.repository import ConversationRepository, MessageRepository
+from app.repositories import CompanyRepository, UserRepository
 from app.modules.chat.schemas import CreateConversationRequest
 from app.schemas.base_schema import SuccessResponse
 from app.schemas.error_schema import ErrorResponse

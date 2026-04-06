@@ -8,7 +8,11 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: Hardening de segurança (concluída — 5 itens de alta prioridade resolvidos)** — arquitetura modular por domínio de negócio, banco de dados async com Unit of Work (transação única por request), 4 models com enums tipados, 6 repositories, persistência atômica no fluxo de chat (save_pair), CRUD de conversas com validação de ownership (IDOR protection), validação de user/company contra o banco, seed de dev, segurança reforçada (API key obrigatória em prod, request ID server-only), respostas padronizadas com envelope, hierarquia de exceções com error codes, logging estruturado com request ID e hardening em todas as camadas. Sem IA real ainda.
+**Fase: Refatoração de código e otimizações (concluída — 10 itens de média/baixa prioridade resolvidos)** — 375 testes automatizados, codebase limpo e otimizado. Próxima fase: integração com IA generativa (OpenAI API + LangChain). Base de segurança e arquitetura 100% pronta para IA.
+
+**Hardening concluído (5 itens alta prioridade):** ownership IDOR, API key em prod, enums tipados, Unit of Work, request ID server-only.
+
+**Refatoração concluída (10 itens média/baixa prioridade):** repositórios compartilhados (UserRepository, CompanyRepository em `app/repositories/`), schemas tipados em controllers (ChatResponse, ConversationResponse, ConversationSummaryResponse, ConversationMessagesResponse, PaginationResponse), decorator `@db_operation` eliminou ~200 linhas boilerplate, `create_tables()` condicional a debug, logs sem conteúdo de mensagens (LGPD), índice composto em messages, dead code removido, pytest-asyncio nativo, health check com DB validation, pool config para Supabase (pool_size=5, max_overflow=10, pool_recycle=300).
 
 - FastAPI + Uvicorn rodando com metadados (title, version via `Settings`)
 - **Estrutura modular por domínio:** `app/modules/chat/` e `app/modules/health/` — cada módulo com routes, controller, service, repository e schemas próprios
@@ -94,9 +98,15 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - `Message`: id, conversation_id (FK CASCADE), sender (`MessageSender` enum: user/bot), content, created_at
   - **Enums tipados** (`app/models/enums.py`): `ConversationStatus` (active, closed) e `MessageSender` (user, bot) — ambos `str, Enum`. Usados nos models (SQLAlchemy `Enum` type), controllers, repositories e schemas. Previnem dados inválidos na fonte.
 - Configuração centralizada: `pydantic-settings` + `.env` (7 campos: app_name, app_version, debug, cors_origins, api_key, rate_limit, database_url)
-- Logger estruturado com `RequestIDFilter` + lazy formatting (`%s`) — sem log injection
-- **358 testes automatizados** — todos passando
-- `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db` (SQLite in-memory com seed de 2 companies + 2 users + FK enforcement), `db_session`. `os.environ.setdefault("DEBUG", "true")` antes dos imports para compatibilidade com o validator de API key.
+- Logger estruturado com `RequestIDFilter` + lazy formatting (`%s`) — sem log injection, sem conteúdo de mensagens (LGPD compliance)
+- **Repositórios refatorados:** `app/repositories/` com UserRepository e CompanyRepository compartilhados (reutilizáveis por outros módulos), repositories chat usam decorator `@db_operation` eliminou ~200 linhas de boilerplate try/except
+- **Controllers com schemas tipados:** ChatResponse, ConversationResponse, ConversationSummaryResponse, ConversationMessagesResponse, PaginationResponse garantem type safety e autocomplete
+- **Health check com validação de banco:** GET `/api/v1/health` retorna 200 (status="ok", database="ok") ou 503 (status="degraded", database="unavailable")
+- **Pool config otimizado para Supabase:** SQLite usa StaticPool (testes), PostgreSQL usa pool_size=5, max_overflow=10, pool_recycle=300, pool_pre_ping=True
+- **Índices otimizados:** índice composto (conversation_id, created_at) em messages cobre query paginada (index-only scan)
+- **Teste modernizados:** pytest.ini com `asyncio_mode = auto`, fixtures async nativas (`@pytest_asyncio.fixture`), sem `asyncio.new_event_loop()` manual
+- **375 testes automatizados** — todos passando (+13 novos para health check, refatorações)
+- `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db`, `db_session` — todas async nativas com pytest-asyncio. `os.environ.setdefault("DEBUG", "true")` antes dos imports para compatibilidade com o validator de API key.
 - Dependências separadas: `requirements.txt` (prod) e `requirements-dev.txt` (dev)
 
 ### Catálogo de Error Codes
@@ -144,9 +154,13 @@ backend/
       error_handler.py             # 7 handlers + middleware catch-all
       exceptions.py                # Hierarquia: AppError → 9 subclasses
       logger.py                    # Logger com RequestIDFilter
+      db_utils.py                  # Decorator @db_operation, DB_TIMEOUT_SECONDS
     db/
-      database.py                  # Engine async, session factory, Base, get_session (Unit of Work), lifecycle helpers
+      database.py                  # Engine async (com pool config Supabase), session factory, Base, get_session (Unit of Work), lifecycle helpers
       seed.py                      # Seed de dev (Company + User), idempotente, só DEBUG=true
+    repositories/                  # Repositories compartilhados (reutilizáveis por múltiplos módulos)
+      user_repository.py           # UserRepository (com @db_operation)
+      company_repository.py        # CompanyRepository (com @db_operation)
     models/                        # Models SQLAlchemy (centralizados, compartilhados)
       enums.py                     # ConversationStatus (active/closed), MessageSender (user/bot)
       company.py                   # Model Company
@@ -172,9 +186,9 @@ backend/
         test_routes.py             # 26 testes de integração do /chat (inclui conversa fechada, persistência, ownership IDOR, atomicidade transacional)
         test_conversation_routes.py  # 32 testes de integração do /conversations (CRUD completo + validação + paginação)
       health/
-        test_controller.py         # 2 testes do HealthController
+        test_controller.py         # 9 testes do HealthController (DB ok, DB down, exceções)
         test_schemas.py            # 1 teste do HealthResponse
-        test_routes.py             # 1 teste de integração do /health
+        test_routes.py             # 7 testes de integração do /health (200 OK, 503 DB fora, status/database fields)
     core/
       test_schemas.py              # 20 testes dos schemas compartilhados
       test_exceptions.py           # 52 testes da hierarquia de exceções
@@ -239,7 +253,18 @@ python -m pytest tests/ -v
 9. ~~Refatorar estrutura por módulos (chat, health)~~ ✅
 10. ~~Histórico de conversas (CRUD completo, persistência atômica, 340 testes)~~ ✅
 10.1. ~~Hardening de segurança (ownership IDOR, API key obrigatória em prod, enums tipados, Unit of Work, request ID server-only — 358 testes)~~ ✅
-11. Integração com IA generativa (OpenAI API + LangChain)
+10.2. ~~Refatoração de código (10 itens média/baixa prioridade, 375 testes)~~ ✅
+   - ~~Extrair UserRepository + CompanyRepository para módulo compartilhado~~ ✅
+   - ~~Schemas tipados em controllers~~ ✅
+   - ~~Decorator @db_operation para eliminar boilerplate~~ ✅
+   - ~~create_tables() condicional a debug~~ ✅
+   - ~~Não logar conteúdo de mensagens~~ ✅
+   - ~~Índice composto em messages~~ ✅
+   - ~~Remover dead code (get_active_by_user)~~ ✅
+   - ~~pytest-asyncio nativo~~ ✅
+   - ~~Health check com DB validation~~ ✅
+   - ~~Pool config para Supabase~~ ✅
+11. **Criação de serviço de geração de respostas** ← PRÓXIMO: integrar OpenAI API + LangChain, implementar chat_service real
 12. RAG (Retrieval Augmented Generation) para respostas contextualizadas
 13. Agendamento automático de horários
 14. Integração com WhatsApp/Instagram
