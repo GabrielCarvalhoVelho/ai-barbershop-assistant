@@ -1,5 +1,6 @@
 from app.core.exceptions import AppError, AuthorizationError, BusinessError, NotFoundError
 from app.core.logger import get_logger
+from app.core.config import settings
 from app.models.enums import ConversationStatus
 from app.modules.chat.repository import ConversationRepository, MessageRepository
 from app.repositories import CompanyRepository, UserRepository
@@ -72,7 +73,12 @@ class ChatController:
             conversation_id = conversation.id
             logger.info("Nova conversa criada: id=%s", conversation_id)
 
-        response_text = generate_response(request.message)
+        history = await message_repo.get_by_conversation(
+            conversation_id=conversation_id,
+            limit=settings.llm_max_history,
+        )
+
+        response_text = await generate_response(request.message, history)
 
         try:
             await message_repo.save_pair(

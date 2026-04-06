@@ -6,3 +6,6 @@ sqlalchemy[asyncio]==2.0.36
 aiosqlite==0.20.0
 asyncpg==0.30.0
 alembic==1.14.1
+langchain==1.2.15
+langchain-groq==1.1.2
+langchain-core==1.2.26

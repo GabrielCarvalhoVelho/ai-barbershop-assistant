@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from app.core.exceptions import BusinessError
@@ -6,6 +8,9 @@ from app.modules.chat.service import (
     _validate_business_rules,
     generate_response,
 )
+
+MOCK_AI_RESPONSE = "Olá! Como posso ajudar?"
+MOCK_TARGET = "app.modules.chat.service.generate_ai_response"
 
 
 # ========================
@@ -63,18 +68,26 @@ class TestBusinessRules:
 # ========================
 
 class TestGenerateResponse:
-    def test_returns_string(self):
-        res = generate_response("Olá")
+    @pytest.mark.asyncio
+    async def test_returns_string(self):
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            res = await generate_response("Olá", [])
         assert isinstance(res, str)
 
-    def test_returns_echo(self):
-        res = generate_response("Olá")
-        assert res == "Você disse: Olá"
+    @pytest.mark.asyncio
+    async def test_calls_llm_with_sanitized_message(self):
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
+            await generate_response("quero   agendar    corte", [])
+        mock_llm.assert_called_once_with("quero agendar corte", [])
 
-    def test_sanitizes_before_responding(self):
-        res = generate_response("quero   agendar    corte")
-        assert res == "Você disse: quero agendar corte"
+    @pytest.mark.asyncio
+    async def test_passes_history_to_llm(self):
+        history = [object(), object()]
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
+            await generate_response("Olá", history)
+        mock_llm.assert_called_once_with("Olá", history)
 
-    def test_blocks_spam(self):
+    @pytest.mark.asyncio
+    async def test_blocks_spam(self):
         with pytest.raises(BusinessError):
-            generate_response("spam spam spam spam spam")
+            await generate_response("spam spam spam spam spam", [])

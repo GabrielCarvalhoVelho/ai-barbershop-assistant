@@ -1,4 +1,18 @@
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+MOCK_AI_RESPONSE = "Olá! Posso ajudar com agendamentos."
+MOCK_TARGET = "app.modules.chat.service.generate_ai_response"
+
 VALID_BODY = {"message": "Quero agendar um corte", "user_id": 1, "company_id": 1}
+
+
+@pytest.fixture(autouse=True)
+def mock_llm():
+    """Mock do LLM em todos os testes de rotas — sem chamadas reais à API do Groq."""
+    with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+        yield
 
 
 # ========================
@@ -12,7 +26,8 @@ class TestChatSuccess:
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
-        assert body["data"]["response"] == "Você disse: Quero agendar um corte"
+        assert isinstance(body["data"]["response"], str)
+        assert len(body["data"]["response"]) > 0
         assert body["data"]["conversation_id"] is not None
         assert "timestamp" in body
 
@@ -22,9 +37,7 @@ class TestChatSuccess:
             json={"message": "quero   agendar    corte", "user_id": 1, "company_id": 1},
         )
         assert response.status_code == 200
-        assert (
-            response.json()["data"]["response"] == "Você disse: quero agendar corte"
-        )
+        assert isinstance(response.json()["data"]["response"], str)
 
     def test_creates_new_conversation_each_call(self, client):
         body = {"message": "Oi", "user_id": 1, "company_id": 1}

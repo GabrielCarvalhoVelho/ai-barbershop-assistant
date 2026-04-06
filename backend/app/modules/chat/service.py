@@ -2,6 +2,7 @@ import re
 
 from app.core.exceptions import BusinessError
 from app.core.logger import get_logger
+from app.modules.ai.llm_service import generate_ai_response
 
 logger = get_logger(__name__)
 
@@ -26,10 +27,10 @@ def _validate_business_rules(message: str) -> None:
             )
 
 
-def generate_response(message: str) -> str:
+async def generate_response(message: str, history: list) -> str:
     message = _sanitize_message(message)
     _validate_business_rules(message)
 
     logger.info("Mensagem recebida: message_length=%d", len(message))
 
-    return f"Você disse: {message}"
+    return await generate_ai_response(message, history)

@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     api_key: str = ""
     rate_limit: str = "10/minute"
     database_url: str = "sqlite+aiosqlite:///./barbershop.db"
+    groq_api_key: str = ""
+    llm_model: str = "llama-3.3-70b-versatile"
+    llm_max_history: int = 10
 
     model_config = {
         "env_file": str(PROJECT_ROOT / ".env"),
@@ -32,6 +35,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "API_KEY é obrigatória em produção. "
                     "Defina API_KEY no .env ou ative DEBUG=true."
+                )
+            if not self.groq_api_key:
+                raise ValueError(
+                    "GROQ_API_KEY é obrigatória em produção. "
+                    "Defina GROQ_API_KEY no .env ou ative DEBUG=true."
                 )
         return self
 

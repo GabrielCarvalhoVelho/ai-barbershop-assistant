@@ -17,6 +17,7 @@ Catálogo de error codes por domínio:
     RES_001   — Recurso não encontrado
     RATE_001  — Limite de requisições excedido
     VAL_001   — Erro de validação customizada
+    AI_001    — Serviço de IA indisponível
 """
 
 
@@ -112,3 +113,10 @@ class RateLimitError(AppError):
 
     status_code = 429
     code = "RATE_001"
+
+
+class AIServiceError(AppError):
+    """Serviço de IA (LLM) indisponível ou com falha."""
+
+    status_code = 503
+    code = "AI_001"

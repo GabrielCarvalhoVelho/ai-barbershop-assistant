@@ -7,6 +7,9 @@ from app.modules.chat.controller import ChatController
 from app.modules.chat.schemas import ChatRequest
 from app.schemas.base_schema import SuccessResponse
 
+MOCK_AI_RESPONSE = "Olá! Posso ajudar com agendamentos."
+MOCK_TARGET = "app.modules.chat.service.generate_ai_response"
+
 
 def _make_conversation(id_: int = 1, status: str = "active", user_id: int = 1, company_id: int = 1):
     conv = AsyncMock()
@@ -32,6 +35,7 @@ def _make_repos(conversation=None):
     conv_repo.create.return_value = conversation or _make_conversation()
     conv_repo.get_by_id.return_value = conversation
     msg_repo.save_pair.return_value = (_make_message(id_=1), _make_message(id_=2))
+    msg_repo.get_by_conversation.return_value = []
     user_repo.get_by_id.return_value = AsyncMock(id=1)
     company_repo.get_by_id.return_value = AsyncMock(id=1)
 
@@ -50,9 +54,10 @@ class TestChatControllerNewConversation:
         conv_repo, msg_repo, user_repo, company_repo = _make_repos(conv)
 
         request = ChatRequest(message="Quero agendar", user_id=1, company_id=1)
-        response = await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            response = await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
         conv_repo.create.assert_called_once_with(user_id=1, company_id=1)
         assert response.data["conversation_id"] == 10
@@ -64,9 +69,10 @@ class TestChatControllerNewConversation:
         company_repo.get_by_id.return_value = AsyncMock(id=3)
 
         request = ChatRequest(message="Oi", user_id=7, company_id=3)
-        await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
         conv_repo.create.assert_called_once_with(user_id=7, company_id=3)
 
@@ -75,9 +81,10 @@ class TestChatControllerNewConversation:
         conv_repo, msg_repo, user_repo, company_repo = _make_repos()
 
         request = ChatRequest(message="Olá", user_id=1, company_id=1)
-        response = await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            response = await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
         assert isinstance(response, SuccessResponse)
         assert response.success is True
@@ -87,23 +94,25 @@ class TestChatControllerNewConversation:
         conv_repo, msg_repo, user_repo, company_repo = _make_repos()
 
         request = ChatRequest(message="Olá", user_id=1, company_id=1)
-        response = await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            response = await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
         assert "response" in response.data
         assert "conversation_id" in response.data
 
     @pytest.mark.asyncio
-    async def test_response_has_echo(self):
+    async def test_response_comes_from_llm(self):
         conv_repo, msg_repo, user_repo, company_repo = _make_repos()
 
         request = ChatRequest(message="Olá", user_id=1, company_id=1)
-        response = await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            response = await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
-        assert response.data["response"] == "Você disse: Olá"
+        assert response.data["response"] == MOCK_AI_RESPONSE
 
     @pytest.mark.asyncio
     async def test_saves_user_and_bot_messages_atomically(self):
@@ -111,14 +120,15 @@ class TestChatControllerNewConversation:
         conv_repo, msg_repo, user_repo, company_repo = _make_repos(conv)
 
         request = ChatRequest(message="Oi", user_id=1, company_id=1)
-        await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
         msg_repo.save_pair.assert_called_once_with(
             conversation_id=5,
             user_content="Oi",
-            bot_content="Você disse: Oi",
+            bot_content=MOCK_AI_RESPONSE,
         )
 
 
@@ -134,9 +144,10 @@ class TestChatControllerExistingConversation:
         conv_repo, msg_repo, user_repo, company_repo = _make_repos(conv)
 
         request = ChatRequest(message="Oi", user_id=1, company_id=1, conversation_id=42)
-        response = await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            response = await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
         conv_repo.get_by_id.assert_called_once_with(42)
         conv_repo.create.assert_not_called()
@@ -284,9 +295,10 @@ class TestChatControllerConversationOwnership:
         conv_repo, msg_repo, user_repo, company_repo = _make_repos(conv)
 
         request = ChatRequest(message="Oi", user_id=1, company_id=1, conversation_id=42)
-        response = await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            response = await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
         assert response.data["conversation_id"] == 42
 
@@ -317,11 +329,12 @@ class TestChatControllerServiceDelegation:
         conv_repo, msg_repo, user_repo, company_repo = _make_repos()
 
         request = ChatRequest(message="quero   agendar    corte", user_id=1, company_id=1)
-        response = await ChatController.send_message(
-            request, conv_repo, msg_repo, user_repo, company_repo
-        )
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            response = await ChatController.send_message(
+                request, conv_repo, msg_repo, user_repo, company_repo
+            )
 
-        assert response.data["response"] == "Você disse: quero agendar corte"
+        assert response.data["response"] == MOCK_AI_RESPONSE
 
     @pytest.mark.asyncio
     async def test_delegates_business_validation_to_service(self):
