@@ -1,6 +1,7 @@
 import pytest
 
 from app.core.exceptions import (
+    AIServiceError,
     AppError,
     AuthenticationError,
     AuthorizationError,
@@ -55,6 +56,7 @@ class TestExceptionHierarchy:
     @pytest.mark.parametrize(
         "exc_class",
         [
+            AIServiceError,
             AuthenticationError,
             AuthorizationError,
             BusinessError,
@@ -72,6 +74,7 @@ class TestExceptionHierarchy:
     @pytest.mark.parametrize(
         "exc_class",
         [
+            AIServiceError,
             AuthenticationError,
             AuthorizationError,
             BusinessError,
@@ -97,6 +100,7 @@ class TestStatusCodes:
         "exc_class, expected_status",
         [
             (AppError, 500),
+            (AIServiceError, 503),
             (AuthenticationError, 401),
             (AuthorizationError, 403),
             (BusinessError, 400),
@@ -122,6 +126,7 @@ class TestErrorCodes:
         "exc_class, expected_code",
         [
             (AppError, "APP_000"),
+            (AIServiceError, "AI_001"),
             (AuthenticationError, "AUTH_001"),
             (AuthorizationError, "AUTH_002"),
             (BusinessError, "CHAT_001"),

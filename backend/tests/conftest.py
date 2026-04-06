@@ -4,6 +4,8 @@ import os
 # não exija API_KEY no ambiente de teste.
 os.environ.setdefault("DEBUG", "true")
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
@@ -88,6 +90,17 @@ async def setup_db():
 
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+MOCK_AI_TARGET = "app.modules.chat.service.generate_ai_response"
+MOCK_AI_RESPONSE = "Olá! Posso ajudar com agendamentos."
+
+
+@pytest.fixture(autouse=True)
+def mock_llm():
+    """Mock global do LLM — nenhum teste chama a API real do Groq."""
+    with patch(MOCK_AI_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+        yield
 
 
 @pytest.fixture

@@ -8,7 +8,9 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: Refatoração de código e otimizações (concluída — 10 itens de média/baixa prioridade resolvidos)** — 375 testes automatizados, codebase limpo e otimizado. Próxima fase: integração com IA generativa (OpenAI API + LangChain). Base de segurança e arquitetura 100% pronta para IA.
+**Fase: Serviço de geração de respostas com IA (concluída — item 11 do roadmap)** — 392 testes automatizados, integração com LLM via Groq + LangChain. Chat agora responde com IA generativa em vez de echo.
+
+**Integração com IA concluída (item 11):** Módulo `app/modules/ai/` com LangChain + Groq (Llama 3.3 70B), system prompt de barbearia, histórico de conversa no contexto (últimas N mensagens), `AIServiceError` (503, AI_001), timeout 30s, GROQ_API_KEY obrigatória em produção.
 
 **Hardening concluído (5 itens alta prioridade):** ownership IDOR, API key em prod, enums tipados, Unit of Work, request ID server-only.
 
@@ -24,9 +26,9 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - Sem `conversation_id`: cria nova conversa automaticamente
   - Com `conversation_id`: reutiliza conversa existente (404 se não encontrada, 403 se não pertence ao user/company, 400 se encerrada)
   - **Validação de ownership:** verifica que `conversation.user_id == request.user_id` e `conversation.company_id == request.company_id` antes de qualquer operação (proteção contra IDOR)
-  - Salva mensagem do user → gera resposta (echo por enquanto) → salva resposta do bot → retorna `{response, conversation_id}`
+  - Salva mensagem do user → gera resposta via LLM (Groq + LangChain) → salva resposta do bot → retorna `{response, conversation_id}`
   - **Transação única (Unit of Work):** toda a operação (criar conversa + salvar mensagens) roda em uma única transação — se qualquer etapa falhar, tudo é desfeito (sem conversas órfãs)
-  - Chat retorna echo: `"Você disse: {message}"`
+  - **Histórico no contexto:** controller busca últimas N mensagens (`LLM_MAX_HISTORY`, default 10) e envia ao LLM junto com a mensagem atual
 - **CRUD de conversas:**
   - `POST /api/v1/conversations` — cria conversa manualmente (recebe `user_id`, `company_id`, valida contra o banco, retorna 201)
   - `GET /api/v1/conversations/{id}` — detalhes de uma conversa com `message_count`
@@ -53,6 +55,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - `DatabaseError` (500, DB_001) — erro genérico de banco
   - `ServiceUnavailableError` (503, DB_003) — banco/serviço indisponível
   - `RateLimitError` (429, RATE_001) — rate limit excedido
+  - `AIServiceError` (503, AI_001) — serviço de IA indisponível
 - **Exception handlers registrados (7):**
   - `AppError` → handler unificado (usa status_code/code da exceção)
   - `HTTPException` → handler padronizado (404, 405, etc. no formato ErrorResponse)
@@ -75,7 +78,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - Controller: captura `AppError` do repository, loga com contexto e re-raise
   - Timeout guard: `asyncio.wait_for(..., timeout=10s)` em todas as operações async de banco
   - Validation handler: extrai field name do Pydantic error, inclui no `ErrorDetail.field`
-- **Validações de produção (`model_validator` em Settings):** CORS wildcard bloqueado e API key obrigatória quando `DEBUG=false`. Em modo debug, ambas são relaxadas para conveniência de dev.
+- **Validações de produção (`model_validator` em Settings):** CORS wildcard bloqueado, API key obrigatória e GROQ_API_KEY obrigatória quando `DEBUG=false`. Em modo debug, todas são relaxadas para conveniência de dev.
 - CORS seguro por padrão: origens restritas (`http://localhost:3000`), wildcard `["*"]` só permitido com `DEBUG=true`
 - Rate limiting via `slowapi` (padrão: `10/minute`, configurável via `RATE_LIMIT`). Aplicado ao `/chat` e `/conversations*`, rotas `/` e `/health` isentas
 - Autenticação por API key (`X-API-Key` header) no `/chat` e `/conversations*` com `secrets.compare_digest` (proteção contra timing attack)
@@ -97,7 +100,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - `Conversation`: id, user_id (FK RESTRICT), company_id (FK RESTRICT), status (`ConversationStatus` enum: active/closed), started_at, ended_at
   - `Message`: id, conversation_id (FK CASCADE), sender (`MessageSender` enum: user/bot), content, created_at
   - **Enums tipados** (`app/models/enums.py`): `ConversationStatus` (active, closed) e `MessageSender` (user, bot) — ambos `str, Enum`. Usados nos models (SQLAlchemy `Enum` type), controllers, repositories e schemas. Previnem dados inválidos na fonte.
-- Configuração centralizada: `pydantic-settings` + `.env` (7 campos: app_name, app_version, debug, cors_origins, api_key, rate_limit, database_url)
+- Configuração centralizada: `pydantic-settings` + `.env` (10 campos: app_name, app_version, debug, cors_origins, api_key, rate_limit, database_url, groq_api_key, llm_model, llm_max_history)
 - Logger estruturado com `RequestIDFilter` + lazy formatting (`%s`) — sem log injection, sem conteúdo de mensagens (LGPD compliance)
 - **Repositórios refatorados:** `app/repositories/` com UserRepository e CompanyRepository compartilhados (reutilizáveis por outros módulos), repositories chat usam decorator `@db_operation` eliminou ~200 linhas de boilerplate try/except
 - **Controllers com schemas tipados:** ChatResponse, ConversationResponse, ConversationSummaryResponse, ConversationMessagesResponse, PaginationResponse garantem type safety e autocomplete
@@ -105,8 +108,8 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 - **Pool config otimizado para Supabase:** SQLite usa StaticPool (testes), PostgreSQL usa pool_size=5, max_overflow=10, pool_recycle=300, pool_pre_ping=True
 - **Índices otimizados:** índice composto (conversation_id, created_at) em messages cobre query paginada (index-only scan)
 - **Teste modernizados:** pytest.ini com `asyncio_mode = auto`, fixtures async nativas (`@pytest_asyncio.fixture`), sem `asyncio.new_event_loop()` manual
-- **375 testes automatizados** — todos passando (+13 novos para health check, refatorações)
-- `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db`, `db_session` — todas async nativas com pytest-asyncio. `os.environ.setdefault("DEBUG", "true")` antes dos imports para compatibilidade com o validator de API key.
+- **392 testes automatizados** — todos passando (+17 novos para IA: 9 LLM service, 4 GROQ_API_KEY prod, 4 parametrizados AIServiceError)
+- `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db`, `db_session`, `mock_llm` (autouse global — nenhum teste chama API real do Groq) — todas async nativas com pytest-asyncio. `os.environ.setdefault("DEBUG", "true")` antes dos imports para compatibilidade com o validator de API key.
 - Dependências separadas: `requirements.txt` (prod) e `requirements-dev.txt` (dev)
 
 ### Catálogo de Error Codes
@@ -123,6 +126,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 | DB_002 | Banco | 409 | Violação de constraint (FK, UNIQUE) |
 | DB_003 | Banco | 503 | Banco/serviço indisponível |
 | RATE_001 | Rate Limit | 429 | Limite de requisições excedido |
+| AI_001 | IA | 503 | Serviço de IA indisponível |
 | HTTP_* | HTTP | varia | HTTPException do FastAPI/Starlette (404, 405, etc.) |
 
 ## Arquitetura
@@ -133,6 +137,9 @@ Monolito modular por domínio de negócio (preparado para futura evolução a mi
 backend/
   app/
     modules/                       # Módulos de domínio (auto-contidos)
+      ai/
+        prompts.py                 # BARBERSHOP_SYSTEM_PROMPT (persona do assistente)
+        llm_service.py             # LangChain + Groq: generate_ai_response (async), _build_history_messages
       chat/
         routes.py                  # POST /api/v1/chat (auth + rate limit)
         conversation_routes.py     # CRUD /api/v1/conversations (POST, GET /{id}, GET /{id}/messages, PATCH /{id}/close)
@@ -152,7 +159,7 @@ backend/
       middleware.py                # RequestIDMiddleware
       rate_limiter.py              # Rate limiting (slowapi)
       error_handler.py             # 7 handlers + middleware catch-all
-      exceptions.py                # Hierarquia: AppError → 9 subclasses
+      exceptions.py                # Hierarquia: AppError → 10 subclasses
       logger.py                    # Logger com RequestIDFilter
       db_utils.py                  # Decorator @db_operation, DB_TIMEOUT_SECONDS
     db/
@@ -191,12 +198,12 @@ backend/
         test_routes.py             # 7 testes de integração do /health (200 OK, 503 DB fora, status/database fields)
     core/
       test_schemas.py              # 20 testes dos schemas compartilhados
-      test_exceptions.py           # 52 testes da hierarquia de exceções
+      test_exceptions.py           # 56 testes da hierarquia de exceções
       test_error_handlers.py       # 17 testes dos handlers
       test_logging.py              # 15 testes de request ID
       test_hardening.py            # 20 testes de hardening (Message + Conversation repos, controller, validation)
-      test_security.py             # 16 testes de segurança (rate limit, API key auth, CORS config, API key obrigatória em prod)
-    conftest.py                    # Fixtures: client, reset_rate_limiter, setup_db, db_session
+      test_security.py             # 20 testes de segurança (rate limit, API key auth, CORS config, API key obrigatória em prod, GROQ_API_KEY obrigatória em prod)
+    conftest.py                    # Fixtures: client, reset_rate_limiter, setup_db, db_session, mock_llm (autouse global)
     test_models.py                 # 31 testes dos models (inclui validação de enum rejeitando valores inválidos)
     test_root.py                   # 1 teste do GET /
 ```
@@ -213,6 +220,7 @@ backend/
 - **Validação:** Pydantic
 - **ORM:** SQLAlchemy (async)
 - **Migrations:** Alembic (async)
+- **IA/LLM:** LangChain + Groq (Llama 3.3 70B Versatile)
 - **DB testes:** SQLite in-memory + aiosqlite
 - **DB dev:** PostgreSQL 18.1 (Postgres.app) + asyncpg
 - **DB prod:** Supabase PostgreSQL + asyncpg (Session Pooler, us-west-2)
@@ -221,7 +229,7 @@ backend/
 - **Configuração:** pydantic-settings (carrega `.env` automaticamente)
 - **Rate Limiting:** slowapi
 - **Autenticação:** API key via header (fastapi.security + secrets)
-- **Dependências prod:** `requirements.txt` (fastapi, uvicorn, pydantic-settings, slowapi, sqlalchemy[asyncio], aiosqlite, asyncpg, alembic)
+- **Dependências prod:** `requirements.txt` (fastapi, uvicorn, pydantic-settings, slowapi, sqlalchemy[asyncio], aiosqlite, asyncpg, alembic, langchain, langchain-groq, langchain-core)
 - **Dependências dev:** `requirements-dev.txt` (inclui prod + pytest, httpx, pytest-asyncio)
 
 ## Como rodar
@@ -264,8 +272,8 @@ python -m pytest tests/ -v
    - ~~pytest-asyncio nativo~~ ✅
    - ~~Health check com DB validation~~ ✅
    - ~~Pool config para Supabase~~ ✅
-11. **Criação de serviço de geração de respostas** ← PRÓXIMO: integrar OpenAI API + LangChain, implementar chat_service real
-12. RAG (Retrieval Augmented Generation) para respostas contextualizadas
+11. ~~Criação de serviço de geração de respostas (LangChain + Groq, Llama 3.3 70B, 392 testes)~~ ✅
+12. **RAG (Retrieval Augmented Generation) para respostas contextualizadas** ← PRÓXIMO
 13. Agendamento automático de horários
 14. Integração com WhatsApp/Instagram
 15. Autenticação e dashboard administrativo ← `user_id`/`company_id` migram do body para token JWT nesta task

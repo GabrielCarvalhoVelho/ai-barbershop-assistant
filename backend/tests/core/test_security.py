@@ -183,3 +183,59 @@ class TestApiKeyConfig:
 
             s = Settings()
             assert s.api_key == "my-prod-secret"
+
+
+class TestGroqApiKeyConfig:
+    def test_empty_groq_key_blocked_in_production(self):
+        """GROQ_API_KEY='' + DEBUG=false deve falhar."""
+        with patch.dict(
+            "os.environ",
+            {"GROQ_API_KEY": "", "API_KEY": "some-key", "DEBUG": "false"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            try:
+                Settings()
+                assert False, "Deveria ter levantado ValueError"
+            except ValueError as e:
+                assert "GROQ_API_KEY é obrigatória" in str(e)
+
+    def test_missing_groq_key_blocked_in_production(self):
+        """GROQ_API_KEY não definida + DEBUG=false deve falhar."""
+        with patch.dict(
+            "os.environ",
+            {"GROQ_API_KEY": "", "API_KEY": "some-key", "DEBUG": "false"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            try:
+                Settings()
+                assert False, "Deveria ter levantado ValueError"
+            except ValueError as e:
+                assert "GROQ_API_KEY é obrigatória" in str(e)
+
+    def test_groq_key_allowed_empty_in_debug(self):
+        """GROQ_API_KEY='' + DEBUG=true é permitido (dev mode)."""
+        with patch.dict(
+            "os.environ",
+            {"GROQ_API_KEY": "", "DEBUG": "true"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            s = Settings()
+            assert s.groq_api_key == ""
+
+    def test_groq_key_set_in_production_succeeds(self):
+        """GROQ_API_KEY definida + DEBUG=false deve funcionar."""
+        with patch.dict(
+            "os.environ",
+            {"GROQ_API_KEY": "gsk_test123", "API_KEY": "prod-key", "DEBUG": "false"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            s = Settings()
+            assert s.groq_api_key == "gsk_test123"

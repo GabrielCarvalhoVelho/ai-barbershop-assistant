@@ -47,6 +47,7 @@ async def generate_ai_response(message: str, history: list) -> str:
         api_key=settings.groq_api_key,
         temperature=0.7,
         max_tokens=512,
+        timeout=30,
     )
 
     messages = [SystemMessage(content=BARBERSHOP_SYSTEM_PROMPT)]

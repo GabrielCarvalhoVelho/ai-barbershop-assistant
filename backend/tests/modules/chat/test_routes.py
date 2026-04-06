@@ -1,18 +1,4 @@
-from unittest.mock import AsyncMock, patch
-
-import pytest
-
-MOCK_AI_RESPONSE = "Olá! Posso ajudar com agendamentos."
-MOCK_TARGET = "app.modules.chat.service.generate_ai_response"
-
 VALID_BODY = {"message": "Quero agendar um corte", "user_id": 1, "company_id": 1}
-
-
-@pytest.fixture(autouse=True)
-def mock_llm():
-    """Mock do LLM em todos os testes de rotas — sem chamadas reais à API do Groq."""
-    with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-        yield
 
 
 # ========================
