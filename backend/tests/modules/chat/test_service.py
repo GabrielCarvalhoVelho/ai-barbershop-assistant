@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.core.exceptions import BusinessError
+from app.modules.ai.prompts import BusinessInfo
 from app.modules.chat.service import (
     _sanitize_message,
     _validate_business_rules,
@@ -11,6 +12,7 @@ from app.modules.chat.service import (
 
 MOCK_AI_RESPONSE = "Olá! Como posso ajudar?"
 MOCK_TARGET = "app.modules.chat.service.generate_ai_response"
+FAKE_BUSINESS = BusinessInfo(name="Barbearia Teste")
 
 
 # ========================
@@ -71,23 +73,32 @@ class TestGenerateResponse:
     @pytest.mark.asyncio
     async def test_returns_string(self):
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            res = await generate_response("Olá", [])
+            res = await generate_response("Olá", [], FAKE_BUSINESS)
         assert isinstance(res, str)
 
     @pytest.mark.asyncio
     async def test_calls_llm_with_sanitized_message(self):
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
-            await generate_response("quero   agendar    corte", [])
-        mock_llm.assert_called_once_with("quero agendar corte", [])
+            await generate_response("quero   agendar    corte", [], FAKE_BUSINESS)
+        args = mock_llm.call_args
+        assert args[0][0] == "quero agendar corte"
 
     @pytest.mark.asyncio
     async def test_passes_history_to_llm(self):
         history = [object(), object()]
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
-            await generate_response("Olá", history)
-        mock_llm.assert_called_once_with("Olá", history)
+            await generate_response("Olá", history, FAKE_BUSINESS)
+        args = mock_llm.call_args
+        assert args[0][1] is history
+
+    @pytest.mark.asyncio
+    async def test_passes_system_prompt_to_llm(self):
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
+            await generate_response("Olá", [], FAKE_BUSINESS)
+        system_prompt = mock_llm.call_args[0][2]
+        assert "Barbearia Teste" in system_prompt
 
     @pytest.mark.asyncio
     async def test_blocks_spam(self):
         with pytest.raises(BusinessError):
-            await generate_response("spam spam spam spam spam", [])
+            await generate_response("spam spam spam spam spam", [], FAKE_BUSINESS)

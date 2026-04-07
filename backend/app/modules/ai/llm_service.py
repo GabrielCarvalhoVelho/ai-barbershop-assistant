@@ -5,7 +5,6 @@ from app.core.config import settings
 from app.core.exceptions import AIServiceError
 from app.core.logger import get_logger
 from app.models.enums import MessageSender
-from app.modules.ai.prompts import BARBERSHOP_SYSTEM_PROMPT
 
 logger = get_logger(__name__)
 
@@ -21,7 +20,11 @@ def _build_history_messages(history: list) -> list:
     return messages
 
 
-async def generate_ai_response(message: str, history: list) -> str:
+async def generate_ai_response(
+    message: str,
+    history: list,
+    system_prompt: str,
+) -> str:
     """
     Chama o LLM via Groq com o histórico da conversa e retorna a resposta gerada.
 
@@ -29,6 +32,7 @@ async def generate_ai_response(message: str, history: list) -> str:
         message: Mensagem atual do usuário (já sanitizada).
         history: Lista de objetos Message do banco (ordenados por created_at asc).
                  Apenas as últimas N mensagens, conforme LLM_MAX_HISTORY.
+        system_prompt: System prompt montado pelo build_system_prompt().
 
     Returns:
         Texto da resposta gerada pelo modelo.
@@ -50,7 +54,7 @@ async def generate_ai_response(message: str, history: list) -> str:
         timeout=30,
     )
 
-    messages = [SystemMessage(content=BARBERSHOP_SYSTEM_PROMPT)]
+    messages = [SystemMessage(content=system_prompt)]
     messages.extend(_build_history_messages(history))
     messages.append(HumanMessage(content=message))
 

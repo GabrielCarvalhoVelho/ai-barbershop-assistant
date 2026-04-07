@@ -11,7 +11,8 @@ from sqlalchemy import inspect
 from app.db.database import Base
 from app.models.company import Company
 from app.models.conversation import Conversation
-from app.models.enums import ConversationStatus, MessageSender
+from app.models.enums import ConversationStatus, DocumentCategory, MessageSender
+from app.models.knowledge_document import KnowledgeDocument
 from app.models.message import Message
 from app.models.user import User
 
@@ -408,3 +409,145 @@ class TestMessageModel:
     @pytest.mark.asyncio
     async def test_table_name_is_messages(self):
         assert Message.__tablename__ == "messages"
+
+
+class TestKnowledgeDocumentModel:
+    @pytest.mark.asyncio
+    async def test_create_with_required_fields(self, session, company):
+        doc = KnowledgeDocument(
+            company_id=company.id,
+            title="Corte masculino",
+            content="Corte masculino — R$ 40,00.",
+            category=DocumentCategory.SERVICES,
+        )
+        session.add(doc)
+        await session.commit()
+        await session.refresh(doc)
+
+        assert doc.id is not None
+        assert doc.company_id == company.id
+        assert doc.title == "Corte masculino"
+        assert doc.content == "Corte masculino — R$ 40,00."
+        assert doc.category == DocumentCategory.SERVICES
+
+    @pytest.mark.asyncio
+    async def test_is_active_defaults_to_true(self, session, company):
+        doc = KnowledgeDocument(
+            company_id=company.id,
+            title="Horário",
+            content="9h-19h",
+            category=DocumentCategory.HOURS,
+        )
+        session.add(doc)
+        await session.commit()
+        await session.refresh(doc)
+
+        assert doc.is_active is True
+
+    @pytest.mark.asyncio
+    async def test_can_set_is_active_false(self, session, company):
+        doc = KnowledgeDocument(
+            company_id=company.id,
+            title="Promoção encerrada",
+            content="Promoção de verão.",
+            category=DocumentCategory.SERVICES,
+            is_active=False,
+        )
+        session.add(doc)
+        await session.commit()
+        await session.refresh(doc)
+
+        assert doc.is_active is False
+
+    @pytest.mark.asyncio
+    async def test_created_at_is_auto_generated(self, session, company):
+        doc = KnowledgeDocument(
+            company_id=company.id,
+            title="FAQ",
+            content="Resposta",
+            category=DocumentCategory.FAQ,
+        )
+        session.add(doc)
+        await session.commit()
+        await session.refresh(doc)
+
+        assert doc.created_at is not None
+
+    @pytest.mark.asyncio
+    async def test_updated_at_defaults_to_none(self, session, company):
+        doc = KnowledgeDocument(
+            company_id=company.id,
+            title="Geral",
+            content="Info",
+            category=DocumentCategory.GENERAL,
+        )
+        session.add(doc)
+        await session.commit()
+        await session.refresh(doc)
+
+        assert doc.updated_at is None
+
+    @pytest.mark.asyncio
+    async def test_content_accepts_long_text(self, session, company):
+        long_text = "A" * 3000
+        doc = KnowledgeDocument(
+            company_id=company.id,
+            title="Longo",
+            content=long_text,
+            category=DocumentCategory.GENERAL,
+        )
+        session.add(doc)
+        await session.commit()
+        await session.refresh(doc)
+
+        assert len(doc.content) == 3000
+
+    @pytest.mark.asyncio
+    async def test_all_categories_accepted(self, session, company):
+        for cat in DocumentCategory:
+            doc = KnowledgeDocument(
+                company_id=company.id,
+                title=f"Doc {cat.value}",
+                content=f"Conteúdo {cat.value}",
+                category=cat,
+            )
+            session.add(doc)
+        await session.commit()
+
+    def test_invalid_category_rejected_by_enum(self):
+        with pytest.raises(ValueError):
+            DocumentCategory("invalid")
+
+    def test_category_enum_has_expected_values(self):
+        assert DocumentCategory.SERVICES.value == "services"
+        assert DocumentCategory.HOURS.value == "hours"
+        assert DocumentCategory.POLICIES.value == "policies"
+        assert DocumentCategory.FAQ.value == "faq"
+        assert DocumentCategory.GENERAL.value == "general"
+        assert len(DocumentCategory) == 5
+
+    @pytest.mark.asyncio
+    async def test_company_can_have_multiple_documents(self, session, company):
+        doc1 = KnowledgeDocument(
+            company_id=company.id,
+            title="Doc 1",
+            content="Conteúdo 1",
+            category=DocumentCategory.SERVICES,
+        )
+        doc2 = KnowledgeDocument(
+            company_id=company.id,
+            title="Doc 2",
+            content="Conteúdo 2",
+            category=DocumentCategory.HOURS,
+        )
+        session.add_all([doc1, doc2])
+        await session.commit()
+        await session.refresh(doc1)
+        await session.refresh(doc2)
+
+        assert doc1.id != doc2.id
+        assert doc1.company_id == doc2.company_id
+
+    @pytest.mark.asyncio
+    async def test_table_name_is_knowledge_documents(self):
+        assert KnowledgeDocument.__tablename__ == "knowledge_documents"

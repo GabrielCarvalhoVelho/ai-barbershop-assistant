@@ -8,9 +8,13 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: Serviço de geração de respostas com IA (concluída — item 11 do roadmap)** — 392 testes automatizados, integração com LLM via Groq + LangChain. Chat agora responde com IA generativa em vez de echo.
+**Fase: Base de conhecimento concluída (itens 11-13 do roadmap)** — 438 testes automatizados. IA generativa (Groq + LangChain), prompts modulares com dados do negócio, base de conhecimento com 11 documentos seed. Próximo: RAG.
 
-**Integração com IA concluída (item 11):** Módulo `app/modules/ai/` com LangChain + Groq (Llama 3.3 70B), system prompt de barbearia, histórico de conversa no contexto (últimas N mensagens), `AIServiceError` (503, AI_001), timeout 30s, GROQ_API_KEY obrigatória em produção.
+**Base de conhecimento concluída (item 13):** Model `KnowledgeDocument` (id, company_id FK, title, content, category enum, is_active, created_at, updated_at), `DocumentCategory` enum (services/hours/policies/faq/general), `KnowledgeDocumentRepository` (get_by_company, get_by_category, create), índice composto (company_id, category), seed com 11 documentos realistas, migration Alembic.
+
+**Estrutura de prompts concluída (item 12):** Prompt modular por seções (persona, regras, detalhes do negócio, contexto RAG). `BusinessInfo` dataclass (DTO desacoplado do ORM), `build_system_prompt(business_info, context)` monta prompt dinâmico com dados reais da empresa. `context` aceita string do RAG (vazio por padrão). `llm_service` recebe `system_prompt` por parâmetro (Single Responsibility).
+
+**Integração com IA concluída (item 11):** Módulo `app/modules/ai/` com LangChain + Groq (Llama 3.3 70B), histórico de conversa no contexto (últimas N mensagens), `AIServiceError` (503, AI_001), timeout 30s, GROQ_API_KEY obrigatória em produção.
 
 **Hardening concluído (5 itens alta prioridade):** ownership IDOR, API key em prod, enums tipados, Unit of Work, request ID server-only.
 
@@ -88,27 +92,28 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - **Dev local:** PostgreSQL 18.1 (Postgres.app) — banco `barbershop`
   - **Produção:** Supabase PostgreSQL (us-west-2, Session Pooler) — banco `postgres`
   - `database.py`: engine, async_session, Base, get_session, create_tables, dispose_engine
-  - `seed.py`: seed de dados para dev (1 Company + 1 User), idempotente, roda apenas com `DEBUG=true`
+  - `seed.py`: seed de dados para dev (1 Company + 1 User + 11 KnowledgeDocuments), idempotente, roda apenas com `DEBUG=true`
   - Lifespan handler no `main.py`: cria tabelas no startup, seed de dev (se debug), fecha engine no shutdown
 - **Migrations (Alembic):**
   - `alembic.ini` + `migrations/env.py` configurados com async + URL dinâmica via Settings
   - Migration inicial: cria 4 tabelas, 4 FKs, 4 índices, 2 UNIQUE constraints
   - Migration `f97c79dc2341`: converte `status` e `sender` de VARCHAR para ENUM nativo no PostgreSQL (com `USING cast`, `checkfirst=True`)
-- **4 Models SQLAlchemy** (centralizados em `app/models/`):
+- **5 Models SQLAlchemy** (centralizados em `app/models/`):
   - `Company`: id, name, address, phone, created_at, updated_at
   - `User`: id, company_id (FK RESTRICT), name, phone (UNIQUE), email (UNIQUE), created_at, updated_at
   - `Conversation`: id, user_id (FK RESTRICT), company_id (FK RESTRICT), status (`ConversationStatus` enum: active/closed), started_at, ended_at
   - `Message`: id, conversation_id (FK CASCADE), sender (`MessageSender` enum: user/bot), content, created_at
-  - **Enums tipados** (`app/models/enums.py`): `ConversationStatus` (active, closed) e `MessageSender` (user, bot) — ambos `str, Enum`. Usados nos models (SQLAlchemy `Enum` type), controllers, repositories e schemas. Previnem dados inválidos na fonte.
+  - `KnowledgeDocument`: id, company_id (FK RESTRICT), title, content (Text), category (`DocumentCategory` enum), is_active (default true), created_at, updated_at — índice composto (company_id, category)
+  - **Enums tipados** (`app/models/enums.py`): `ConversationStatus` (active, closed), `MessageSender` (user, bot), `DocumentCategory` (services, hours, policies, faq, general) — todos `str, Enum`. Usados nos models (SQLAlchemy `Enum` type), controllers, repositories e schemas. Previnem dados inválidos na fonte.
 - Configuração centralizada: `pydantic-settings` + `.env` (10 campos: app_name, app_version, debug, cors_origins, api_key, rate_limit, database_url, groq_api_key, llm_model, llm_max_history)
 - Logger estruturado com `RequestIDFilter` + lazy formatting (`%s`) — sem log injection, sem conteúdo de mensagens (LGPD compliance)
-- **Repositórios refatorados:** `app/repositories/` com UserRepository e CompanyRepository compartilhados (reutilizáveis por outros módulos), repositories chat usam decorator `@db_operation` eliminou ~200 linhas de boilerplate try/except
+- **Repositórios refatorados:** `app/repositories/` com UserRepository, CompanyRepository e KnowledgeDocumentRepository compartilhados (reutilizáveis por outros módulos), repositories chat usam decorator `@db_operation` eliminou ~200 linhas de boilerplate try/except
 - **Controllers com schemas tipados:** ChatResponse, ConversationResponse, ConversationSummaryResponse, ConversationMessagesResponse, PaginationResponse garantem type safety e autocomplete
 - **Health check com validação de banco:** GET `/api/v1/health` retorna 200 (status="ok", database="ok") ou 503 (status="degraded", database="unavailable")
 - **Pool config otimizado para Supabase:** SQLite usa StaticPool (testes), PostgreSQL usa pool_size=5, max_overflow=10, pool_recycle=300, pool_pre_ping=True
 - **Índices otimizados:** índice composto (conversation_id, created_at) em messages cobre query paginada (index-only scan)
 - **Teste modernizados:** pytest.ini com `asyncio_mode = auto`, fixtures async nativas (`@pytest_asyncio.fixture`), sem `asyncio.new_event_loop()` manual
-- **392 testes automatizados** — todos passando (+17 novos para IA: 9 LLM service, 4 GROQ_API_KEY prod, 4 parametrizados AIServiceError)
+- **438 testes automatizados** — todos passando (prompts: 23, knowledge model: 11, knowledge repository: 12, LLM service: 9, GROQ_API_KEY prod: 4, AIServiceError: 4)
 - `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db`, `db_session`, `mock_llm` (autouse global — nenhum teste chama API real do Groq) — todas async nativas com pytest-asyncio. `os.environ.setdefault("DEBUG", "true")` antes dos imports para compatibilidade com o validator de API key.
 - Dependências separadas: `requirements.txt` (prod) e `requirements-dev.txt` (dev)
 
@@ -138,8 +143,8 @@ backend/
   app/
     modules/                       # Módulos de domínio (auto-contidos)
       ai/
-        prompts.py                 # BARBERSHOP_SYSTEM_PROMPT (persona do assistente)
-        llm_service.py             # LangChain + Groq: generate_ai_response (async), _build_history_messages
+        prompts.py                 # BusinessInfo dataclass, seções modulares, build_system_prompt(business_info, context)
+        llm_service.py             # LangChain + Groq: generate_ai_response(message, history, system_prompt), _build_history_messages
       chat/
         routes.py                  # POST /api/v1/chat (auth + rate limit)
         conversation_routes.py     # CRUD /api/v1/conversations (POST, GET /{id}, GET /{id}/messages, PATCH /{id}/close)
@@ -164,16 +169,18 @@ backend/
       db_utils.py                  # Decorator @db_operation, DB_TIMEOUT_SECONDS
     db/
       database.py                  # Engine async (com pool config Supabase), session factory, Base, get_session (Unit of Work), lifecycle helpers
-      seed.py                      # Seed de dev (Company + User), idempotente, só DEBUG=true
+      seed.py                      # Seed de dev (Company + User + 11 KnowledgeDocuments), idempotente, só DEBUG=true
     repositories/                  # Repositories compartilhados (reutilizáveis por múltiplos módulos)
       user_repository.py           # UserRepository (com @db_operation)
       company_repository.py        # CompanyRepository (com @db_operation)
+      knowledge_repository.py      # KnowledgeDocumentRepository (get_by_company, get_by_category, create)
     models/                        # Models SQLAlchemy (centralizados, compartilhados)
-      enums.py                     # ConversationStatus (active/closed), MessageSender (user/bot)
+      enums.py                     # ConversationStatus (active/closed), MessageSender (user/bot), DocumentCategory (services/hours/policies/faq/general)
       company.py                   # Model Company
       user.py                      # Model User (FK → Company)
       conversation.py              # Model Conversation (FK → User + Company, status enum)
       message.py                   # Model Message (FK → Conversation, sender enum)
+      knowledge_document.py        # Model KnowledgeDocument (FK → Company, category enum, is_active)
     schemas/                       # Schemas compartilhados (envelope de resposta)
       base_schema.py               # BaseResponse, SuccessResponse, ErrorDetail
       error_schema.py              # ErrorResponse
@@ -184,10 +191,13 @@ backend/
   alembic.ini                      # Config do Alembic
   tests/
     modules/
+      ai/
+        test_prompts.py            # 23 testes do build_system_prompt (BusinessInfo, seções, dados opcionais, contexto RAG)
+        test_llm_service.py        # 9 testes do generate_ai_response (mock ChatGroq, system_prompt, histórico, erro)
       chat/
         test_controller.py         # 19 testes do ChatController (nova conversa, existente, conversa fechada, user/company 404, ownership IDOR, delegação)
         test_conversation_controller.py  # 24 testes do ConversationController (create, get_by_id, get_messages, close)
-        test_service.py            # 11 testes do chat_service
+        test_service.py            # 12 testes do chat_service (inclui propagação de BusinessInfo ao LLM)
         test_repository.py         # 26 testes (ConversationRepository + MessageRepository + save_pair)
         test_schemas.py            # 39 testes (ChatRequest, ChatResponse, MessageResponse, ConversationResponse, ConversationDetailResponse)
         test_routes.py             # 26 testes de integração do /chat (inclui conversa fechada, persistência, ownership IDOR, atomicidade transacional)
@@ -204,11 +214,12 @@ backend/
       test_hardening.py            # 20 testes de hardening (Message + Conversation repos, controller, validation)
       test_security.py             # 20 testes de segurança (rate limit, API key auth, CORS config, API key obrigatória em prod, GROQ_API_KEY obrigatória em prod)
     conftest.py                    # Fixtures: client, reset_rate_limiter, setup_db, db_session, mock_llm (autouse global)
-    test_models.py                 # 31 testes dos models (inclui validação de enum rejeitando valores inválidos)
+    test_models.py                 # 42 testes dos models (Company, User, Conversation, Message, KnowledgeDocument + enums)
+    test_knowledge_repository.py   # 12 testes do KnowledgeDocumentRepository (create, get_by_company, get_by_category, is_active, isolamento)
     test_root.py                   # 1 teste do GET /
 ```
 
-**Fluxo do chat:** Cliente → Routes → RequestIDMiddleware (UUID server-side) → Auth + Rate Limit → Controller (valida user/company → resolve/cria conversa → valida ownership → valida conversa ativa → Service gera resposta → persiste user+bot msg via save_pair) → `get_session` commit → SuccessResponse com `{response, conversation_id}`. Se qualquer etapa falhar, `get_session` faz rollback de tudo (Unit of Work).
+**Fluxo do chat:** Cliente → Routes → RequestIDMiddleware (UUID server-side) → Auth + Rate Limit → Controller (valida user/company → resolve/cria conversa → valida ownership → valida conversa ativa → monta BusinessInfo → busca histórico → Service sanitiza/valida → build_system_prompt(business_info) → llm_service.generate_ai_response(msg, history, prompt) → persiste user+bot msg via save_pair) → `get_session` commit → SuccessResponse com `{response, conversation_id}`. Se qualquer etapa falhar, `get_session` faz rollback de tudo (Unit of Work).
 
 **Fluxo de erros:** Exceção → Exception Handler (AppError/HTTP/Validation/RateLimit/DB) → ErrorResponse padronizado com code + request_id → Cliente
 
@@ -273,11 +284,13 @@ python -m pytest tests/ -v
    - ~~Health check com DB validation~~ ✅
    - ~~Pool config para Supabase~~ ✅
 11. ~~Criação de serviço de geração de respostas (LangChain + Groq, Llama 3.3 70B, 392 testes)~~ ✅
-12. **RAG (Retrieval Augmented Generation) para respostas contextualizadas** ← PRÓXIMO
-13. Agendamento automático de horários
-14. Integração com WhatsApp/Instagram
-15. Autenticação e dashboard administrativo ← `user_id`/`company_id` migram do body para token JWT nesta task
-16. Docker + deploy
+12. ~~Criar estrutura de prompts da IA (prompt modular, BusinessInfo, build_system_prompt, 415 testes)~~ ✅
+13. ~~Criar base de conhecimento do sistema (KnowledgeDocument, DocumentCategory, seed 11 docs, 438 testes)~~ ✅
+14. **Implementar busca de contexto (RAG)** ← PRÓXIMO
+15. Agendamento automático de horários
+16. Integração com WhatsApp/Instagram
+17. Autenticação e dashboard administrativo ← `user_id`/`company_id` migram do body para token JWT nesta task
+18. Docker + deploy
 
 ## Convenções
 

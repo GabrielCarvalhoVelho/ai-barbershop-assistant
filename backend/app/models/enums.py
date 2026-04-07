@@ -16,3 +16,11 @@ class ConversationStatus(str, Enum):
 class MessageSender(str, Enum):
     USER = "user"
     BOT = "bot"
+
+
+class DocumentCategory(str, Enum):
+    SERVICES = "services"
+    HOURS = "hours"
+    POLICIES = "policies"
+    FAQ = "faq"
+    GENERAL = "general"

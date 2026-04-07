@@ -26,6 +26,15 @@ def _make_message(id_: int = 1):
     return msg
 
 
+def _make_company(id_: int = 1, name: str = "Barbearia Teste", phone: str | None = None, address: str | None = None):
+    company = AsyncMock()
+    company.id = id_
+    company.name = name
+    company.phone = phone
+    company.address = address
+    return company
+
+
 def _make_repos(conversation=None):
     conv_repo = AsyncMock()
     msg_repo = AsyncMock()
@@ -37,7 +46,7 @@ def _make_repos(conversation=None):
     msg_repo.save_pair.return_value = (_make_message(id_=1), _make_message(id_=2))
     msg_repo.get_by_conversation.return_value = []
     user_repo.get_by_id.return_value = AsyncMock(id=1)
-    company_repo.get_by_id.return_value = AsyncMock(id=1)
+    company_repo.get_by_id.return_value = _make_company()
 
     return conv_repo, msg_repo, user_repo, company_repo
 
@@ -66,7 +75,7 @@ class TestChatControllerNewConversation:
     async def test_passes_user_and_company_to_create(self):
         conv_repo, msg_repo, user_repo, company_repo = _make_repos()
         user_repo.get_by_id.return_value = AsyncMock(id=7)
-        company_repo.get_by_id.return_value = AsyncMock(id=3)
+        company_repo.get_by_id.return_value = _make_company(id_=3)
 
         request = ChatRequest(message="Oi", user_id=7, company_id=3)
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
@@ -246,7 +255,7 @@ class TestChatControllerConversationOwnership:
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
         conv_repo, msg_repo, user_repo, company_repo = _make_repos(conv)
         user_repo.get_by_id.return_value = AsyncMock(id=99)
-        company_repo.get_by_id.return_value = AsyncMock(id=1)
+        company_repo.get_by_id.return_value = _make_company(id_=1)
 
         request = ChatRequest(message="Oi", user_id=99, company_id=1, conversation_id=42)
 
@@ -263,7 +272,7 @@ class TestChatControllerConversationOwnership:
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
         conv_repo, msg_repo, user_repo, company_repo = _make_repos(conv)
         user_repo.get_by_id.return_value = AsyncMock(id=1)
-        company_repo.get_by_id.return_value = AsyncMock(id=99)
+        company_repo.get_by_id.return_value = _make_company(id_=99)
 
         request = ChatRequest(message="Oi", user_id=1, company_id=99, conversation_id=42)
 
@@ -280,7 +289,7 @@ class TestChatControllerConversationOwnership:
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
         conv_repo, msg_repo, user_repo, company_repo = _make_repos(conv)
         user_repo.get_by_id.return_value = AsyncMock(id=50)
-        company_repo.get_by_id.return_value = AsyncMock(id=60)
+        company_repo.get_by_id.return_value = _make_company(id_=60)
 
         request = ChatRequest(message="Oi", user_id=50, company_id=60, conversation_id=42)
 
@@ -308,7 +317,7 @@ class TestChatControllerConversationOwnership:
         conv = _make_conversation(id_=42, status="closed", user_id=1, company_id=1)
         conv_repo, msg_repo, user_repo, company_repo = _make_repos(conv)
         user_repo.get_by_id.return_value = AsyncMock(id=99)
-        company_repo.get_by_id.return_value = AsyncMock(id=1)
+        company_repo.get_by_id.return_value = _make_company(id_=1)
 
         request = ChatRequest(message="Oi", user_id=99, company_id=1, conversation_id=42)
 

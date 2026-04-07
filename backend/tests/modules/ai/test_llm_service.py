@@ -5,9 +5,9 @@ import pytest
 from app.core.exceptions import AIServiceError
 from app.models.enums import MessageSender
 from app.modules.ai.llm_service import _build_history_messages, generate_ai_response
-from app.modules.ai.prompts import BARBERSHOP_SYSTEM_PROMPT
 
 MOCK_TARGET = "app.modules.ai.llm_service.ChatGroq"
+FAKE_SYSTEM_PROMPT = "Você é um assistente de teste."
 
 
 def _make_message(sender: MessageSender, content: str):
@@ -78,12 +78,12 @@ class TestGenerateAiResponse:
         mock_llm.ainvoke.return_value = mock_response
 
         with patch(MOCK_TARGET, return_value=mock_llm):
-            result = await generate_ai_response("Quero agendar", [])
+            result = await generate_ai_response("Quero agendar", [], FAKE_SYSTEM_PROMPT)
 
         assert result == "Posso agendar para amanhã!"
 
     @pytest.mark.asyncio
-    async def test_includes_system_prompt(self):
+    async def test_uses_provided_system_prompt(self):
         from langchain_core.messages import SystemMessage
 
         mock_response = MagicMock()
@@ -92,11 +92,11 @@ class TestGenerateAiResponse:
         mock_llm.ainvoke.return_value = mock_response
 
         with patch(MOCK_TARGET, return_value=mock_llm):
-            await generate_ai_response("Oi", [])
+            await generate_ai_response("Oi", [], FAKE_SYSTEM_PROMPT)
 
         call_args = mock_llm.ainvoke.call_args[0][0]
         assert isinstance(call_args[0], SystemMessage)
-        assert call_args[0].content == BARBERSHOP_SYSTEM_PROMPT
+        assert call_args[0].content == FAKE_SYSTEM_PROMPT
 
     @pytest.mark.asyncio
     async def test_includes_history_in_messages(self):
@@ -110,7 +110,7 @@ class TestGenerateAiResponse:
         history = [_make_message(MessageSender.USER, "Mensagem anterior")]
 
         with patch(MOCK_TARGET, return_value=mock_llm):
-            await generate_ai_response("Nova mensagem", history)
+            await generate_ai_response("Nova mensagem", history, FAKE_SYSTEM_PROMPT)
 
         call_args = mock_llm.ainvoke.call_args[0][0]
         # system + 1 history + current = 3 messages
@@ -128,7 +128,7 @@ class TestGenerateAiResponse:
         mock_llm.ainvoke.return_value = mock_response
 
         with patch(MOCK_TARGET, return_value=mock_llm):
-            await generate_ai_response("Mensagem atual", [])
+            await generate_ai_response("Mensagem atual", [], FAKE_SYSTEM_PROMPT)
 
         call_args = mock_llm.ainvoke.call_args[0][0]
         assert isinstance(call_args[-1], HumanMessage)
@@ -141,7 +141,7 @@ class TestGenerateAiResponse:
 
         with patch(MOCK_TARGET, return_value=mock_llm):
             with pytest.raises(AIServiceError) as exc_info:
-                await generate_ai_response("Oi", [])
+                await generate_ai_response("Oi", [], FAKE_SYSTEM_PROMPT)
 
         assert "indisponível" in exc_info.value.message
         assert exc_info.value.code == "AI_001"
