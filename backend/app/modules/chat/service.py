@@ -32,12 +32,13 @@ async def generate_response(
     message: str,
     history: list,
     business_info: BusinessInfo,
+    context: str = "",
 ) -> str:
     message = _sanitize_message(message)
     _validate_business_rules(message)
 
     logger.info("Mensagem recebida: message_length=%d", len(message))
 
-    system_prompt = build_system_prompt(business_info)
+    system_prompt = build_system_prompt(business_info, context=context)
 
     return await generate_ai_response(message, history, system_prompt)

@@ -2,9 +2,10 @@ from app.core.exceptions import AppError, AuthorizationError, BusinessError, Not
 from app.core.logger import get_logger
 from app.core.config import settings
 from app.models.enums import ConversationStatus
+from app.modules.ai.context_service import format_knowledge_context
 from app.modules.ai.prompts import BusinessInfo
 from app.modules.chat.repository import ConversationRepository, MessageRepository
-from app.repositories import CompanyRepository, UserRepository
+from app.repositories import CompanyRepository, KnowledgeDocumentRepository, UserRepository
 from app.modules.chat.schemas import (
     ChatRequest,
     ChatResponse,
@@ -29,6 +30,7 @@ class ChatController:
         message_repo: MessageRepository,
         user_repo: UserRepository,
         company_repo: CompanyRepository,
+        knowledge_repo: KnowledgeDocumentRepository,
     ) -> SuccessResponse:
         logger.info(
             "Chat iniciado: user_id=%s company_id=%s message_length=%s",
@@ -85,8 +87,11 @@ class ChatController:
             address=company.address,
         )
 
+        documents = await knowledge_repo.get_by_company(request.company_id)
+        context = format_knowledge_context(documents)
+
         response_text = await generate_response(
-            request.message, history, business_info
+            request.message, history, business_info, context=context
         )
 
         try:

@@ -369,3 +369,29 @@ class TestChatTransactionAtomicity:
         r = client.get(f"/api/v1/conversations/{conv_id}/messages")
         assert r.status_code == 200
         assert r.json()["data"]["pagination"]["total"] == 2
+
+
+# ========================
+# POST /chat - contexto RAG
+# ========================
+
+
+class TestChatRAGContext:
+    def test_chat_with_knowledge_documents(self, client):
+        """Company 1 tem documentos — chat funciona com RAG ativo."""
+        response = client.post("/api/v1/chat", json=VALID_BODY)
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert isinstance(body["data"]["response"], str)
+
+    def test_chat_without_knowledge_documents(self, client):
+        """Company 2 não tem documentos — chat funciona sem RAG (graceful)."""
+        response = client.post(
+            "/api/v1/chat",
+            json={"message": "Olá", "user_id": 2, "company_id": 2},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["success"] is True
+        assert isinstance(body["data"]["response"], str)

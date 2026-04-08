@@ -20,6 +20,8 @@ from app.core.rate_limiter import limiter
 from app.db.database import Base, get_session
 from app.main import app
 from app.models.company import Company
+from app.models.enums import DocumentCategory
+from app.models.knowledge_document import KnowledgeDocument
 from app.models.user import User
 
 test_engine = create_async_engine("sqlite+aiosqlite://", echo=False)
@@ -70,6 +72,21 @@ async def setup_db():
 
         user = User(company_id=company.id, name="Teste", phone="+5511999000000")
         session.add(user)
+        await session.commit()
+
+        # Documentos de conhecimento para testes de RAG (company 1 apenas)
+        session.add(KnowledgeDocument(
+            company_id=company.id,
+            title="Corte masculino",
+            content="Corte masculino tradicional — R$ 40,00. Tempo estimado: 30 minutos.",
+            category=DocumentCategory.SERVICES,
+        ))
+        session.add(KnowledgeDocument(
+            company_id=company.id,
+            title="Horário de funcionamento",
+            content="Segunda a sexta: 9h às 19h. Sábado: 8h às 17h.",
+            category=DocumentCategory.HOURS,
+        ))
         await session.commit()
 
         # Segunda company + user para testes de ownership/isolamento

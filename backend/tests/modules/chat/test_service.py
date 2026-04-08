@@ -102,3 +102,32 @@ class TestGenerateResponse:
     async def test_blocks_spam(self):
         with pytest.raises(BusinessError):
             await generate_response("spam spam spam spam spam", [], FAKE_BUSINESS)
+
+
+# ========================
+# Propagação de context (RAG)
+# ========================
+
+class TestGenerateResponseContext:
+    @pytest.mark.asyncio
+    async def test_default_context_omits_section(self):
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
+            await generate_response("Olá", [], FAKE_BUSINESS)
+        system_prompt = mock_llm.call_args[0][2]
+        assert "Use as informações abaixo" not in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_context_included_in_system_prompt(self):
+        context = "Corte masculino: R$ 40,00"
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
+            await generate_response("Olá", [], FAKE_BUSINESS, context=context)
+        system_prompt = mock_llm.call_args[0][2]
+        assert "Use as informações abaixo" in system_prompt
+        assert "Corte masculino: R$ 40,00" in system_prompt
+
+    @pytest.mark.asyncio
+    async def test_empty_context_omits_section(self):
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
+            await generate_response("Olá", [], FAKE_BUSINESS, context="")
+        system_prompt = mock_llm.call_args[0][2]
+        assert "Use as informações abaixo" not in system_prompt
