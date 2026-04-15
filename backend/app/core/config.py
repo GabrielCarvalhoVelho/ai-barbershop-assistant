@@ -17,6 +17,9 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     llm_model: str = "llama-3.3-70b-versatile"
     llm_max_history: int = 10
+    jwt_secret_key: str = ""
+    jwt_algorithm: str = "HS256"
+    jwt_access_token_expire_minutes: int = 30
 
     model_config = {
         "env_file": str(PROJECT_ROOT / ".env"),
@@ -40,6 +43,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "GROQ_API_KEY é obrigatória em produção. "
                     "Defina GROQ_API_KEY no .env ou ative DEBUG=true."
+                )
+            if not self.jwt_secret_key:
+                raise ValueError(
+                    "JWT_SECRET_KEY é obrigatória em produção. "
+                    "Defina JWT_SECRET_KEY no .env ou ative DEBUG=true."
                 )
         return self
 

@@ -176,7 +176,7 @@ class TestApiKeyConfig:
         """API_KEY definida + DEBUG=false deve funcionar."""
         with patch.dict(
             "os.environ",
-            {"API_KEY": "my-prod-secret", "DEBUG": "false"},
+            {"API_KEY": "my-prod-secret", "GROQ_API_KEY": "gsk_test", "JWT_SECRET_KEY": "jwtsecret", "DEBUG": "false"},
             clear=False,
         ):
             from app.core.config import Settings
@@ -232,10 +232,51 @@ class TestGroqApiKeyConfig:
         """GROQ_API_KEY definida + DEBUG=false deve funcionar."""
         with patch.dict(
             "os.environ",
-            {"GROQ_API_KEY": "gsk_test123", "API_KEY": "prod-key", "DEBUG": "false"},
+            {"GROQ_API_KEY": "gsk_test123", "API_KEY": "prod-key", "JWT_SECRET_KEY": "jwtsecret", "DEBUG": "false"},
             clear=False,
         ):
             from app.core.config import Settings
 
             s = Settings()
             assert s.groq_api_key == "gsk_test123"
+
+
+class TestJwtSecretKeyConfig:
+    def test_empty_jwt_secret_key_blocked_in_production(self):
+        """JWT_SECRET_KEY='' + DEBUG=false deve falhar."""
+        with patch.dict(
+            "os.environ",
+            {"JWT_SECRET_KEY": "", "API_KEY": "some-key", "GROQ_API_KEY": "gsk_test", "DEBUG": "false"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            try:
+                Settings()
+                assert False, "Deveria ter levantado ValueError"
+            except ValueError as e:
+                assert "JWT_SECRET_KEY é obrigatória" in str(e)
+
+    def test_jwt_secret_key_allowed_empty_in_debug(self):
+        """JWT_SECRET_KEY='' + DEBUG=true é permitido (dev mode)."""
+        with patch.dict(
+            "os.environ",
+            {"JWT_SECRET_KEY": "", "DEBUG": "true"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            s = Settings()
+            assert s.jwt_secret_key == ""
+
+    def test_jwt_secret_key_set_in_production_succeeds(self):
+        """JWT_SECRET_KEY definida + DEBUG=false deve funcionar."""
+        with patch.dict(
+            "os.environ",
+            {"JWT_SECRET_KEY": "supersecret", "API_KEY": "prod-key", "GROQ_API_KEY": "gsk_test", "DEBUG": "false"},
+            clear=False,
+        ):
+            from app.core.config import Settings
+
+            s = Settings()
+            assert s.jwt_secret_key == "supersecret"

@@ -10,6 +10,7 @@ Todas as exceções herdam de AppError, que carrega:
 Catálogo de error codes por domínio:
     AUTH_001  — API key ausente
     AUTH_002  — API key inválida
+    AUTH_003  — JWT inválido ou expirado
     CHAT_001  — Conteúdo repetitivo (spam)
     DB_001    — Erro genérico de banco de dados
     DB_002    — Violação de constraint (FK, UNIQUE, NOT NULL)
@@ -55,6 +56,13 @@ class AuthorizationError(AppError):
 
     status_code = 403
     code = "AUTH_002"
+
+
+class InvalidTokenError(AppError):
+    """JWT ausente, expirado ou com assinatura inválida."""
+
+    status_code = 401
+    code = "AUTH_003"
 
 
 # --- Erros de negócio ---
