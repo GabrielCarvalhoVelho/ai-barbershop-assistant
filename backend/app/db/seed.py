@@ -1,13 +1,16 @@
+from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logger import get_logger
 from app.models.company import Company
-from app.models.enums import DocumentCategory
+from app.models.enums import DocumentCategory, UserRole
 from app.models.knowledge_document import KnowledgeDocument
 from app.models.user import User
 
 logger = get_logger(__name__)
+
+_pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 SEED_DOCUMENTS = [
     {
@@ -123,7 +126,8 @@ async def seed_dev_data(session: AsyncSession) -> None:
         name="Cliente Teste",
         phone="+5511900000000",
         email="teste@barbershop.dev",
-        password_hash="placeholder",
+        password_hash=_pwd_context.hash("senha_dev_123"),
+        role=UserRole.CUSTOMER,
     )
     session.add(user)
     await session.flush()
