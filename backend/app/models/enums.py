@@ -24,3 +24,8 @@ class DocumentCategory(str, Enum):
     POLICIES = "policies"
     FAQ = "faq"
     GENERAL = "general"
+
+
+class UserRole(str, Enum):
+    CUSTOMER = "customer"
+    ADMIN = "admin"

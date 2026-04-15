@@ -11,7 +11,7 @@ from sqlalchemy import inspect
 from app.db.database import Base
 from app.models.company import Company
 from app.models.conversation import Conversation
-from app.models.enums import ConversationStatus, DocumentCategory, MessageSender
+from app.models.enums import ConversationStatus, DocumentCategory, MessageSender, UserRole
 from app.models.knowledge_document import KnowledgeDocument
 from app.models.message import Message
 from app.models.user import User
@@ -249,6 +249,46 @@ class TestUserModel:
         await session.refresh(user)
 
         assert user.password_hash == hash_value
+
+    @pytest.mark.asyncio
+    async def test_role_defaults_to_customer(self, session, company):
+        user = User(
+            company_id=company.id,
+            name="Default Role",
+            phone="+5511999887699",
+            password_hash="placeholder",
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        assert user.role == UserRole.CUSTOMER
+
+    @pytest.mark.asyncio
+    async def test_can_set_role_admin(self, session, company):
+        user = User(
+            company_id=company.id,
+            name="Admin User",
+            phone="+5511999887688",
+            password_hash="placeholder",
+            role=UserRole.ADMIN,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        assert user.role == UserRole.ADMIN
+
+    @pytest.mark.asyncio
+    async def test_role_is_enum_instance(self, session, company):
+        user = User(
+            company_id=company.id,
+            name="Enum Check",
+            phone="+5511999887677",
+            password_hash="placeholder",
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        assert isinstance(user.role, UserRole)
 
     @pytest.mark.asyncio
     async def test_company_id_has_index(self):

@@ -105,7 +105,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - Migration `f97c79dc2341`: converte `status` e `sender` de VARCHAR para ENUM nativo no PostgreSQL (com `USING cast`, `checkfirst=True`)
 - **5 Models SQLAlchemy** (centralizados em `app/models/`):
   - `Company`: id, name, address, phone, created_at, updated_at
-  - `User`: id, company_id (FK RESTRICT), name, phone (UNIQUE), email (UNIQUE), is_active (default true), password_hash, created_at, updated_at
+  - `User`: id, company_id (FK RESTRICT), name, phone (UNIQUE), email (UNIQUE), is_active (default true), role (`UserRole` enum: customer/admin, default customer), password_hash, created_at, updated_at
   - `Conversation`: id, user_id (FK RESTRICT), company_id (FK RESTRICT), status (`ConversationStatus` enum: active/closed), started_at, ended_at
   - `Message`: id, conversation_id (FK CASCADE), sender (`MessageSender` enum: user/bot), content, created_at
   - `KnowledgeDocument`: id, company_id (FK RESTRICT), title, content (Text), category (`DocumentCategory` enum), is_active (default true), created_at, updated_at — índice composto (company_id, category)
