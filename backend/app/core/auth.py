@@ -1,11 +1,18 @@
 import secrets
 
-from fastapi import Security
-from fastapi.security import APIKeyHeader
+from fastapi import Depends, Security
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.config import settings
-from app.core.exceptions import AuthenticationError, AuthorizationError
+from app.core.exceptions import AuthenticationError, AuthorizationError, InvalidTokenError
+from app.core.security import decode_access_token
+from app.db.database import get_session
+from app.models.user import User
+from app.repositories.user_repository import UserRepository
 
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
+_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def require_api_key(
@@ -25,3 +32,19 @@ async def require_api_key(
         )
 
     return api_key
+
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Security(_bearer_scheme),
+    session: AsyncSession = Depends(get_session),
+) -> User:
+    if credentials is None:
+        raise InvalidTokenError(message="Token ausente.")
+    payload = decode_access_token(credentials.credentials)
+    user_id_str = payload.get("sub")
+    if not user_id_str:
+        raise InvalidTokenError(message="Token inválido.")
+    user = await UserRepository(session).get_by_id(int(user_id_str))
+    if user is None or not user.is_active:
+        raise InvalidTokenError(message="Usuário não encontrado ou inativo.")
+    return user

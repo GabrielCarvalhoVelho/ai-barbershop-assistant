@@ -28,6 +28,7 @@ from app.core.rate_limiter import limiter
 from app.db.database import async_session, create_tables, dispose_engine
 from app.modules.chat.conversation_routes import router as conversation_router
 from app.modules.chat.routes import router as chat_router
+from app.modules.auth.routes import router as auth_router
 from app.modules.health.routes import router as health_router
 import app.models  # noqa: F401 — registra models no SQLAlchemy antes do create_tables
 
@@ -77,3 +78,4 @@ app.include_router(root_router)
 app.include_router(chat_router)
 app.include_router(conversation_router)
 app.include_router(health_router)
+app.include_router(auth_router)

@@ -3,6 +3,7 @@ import os
 # DEBUG=true antes de qualquer import da app — garante que Settings()
 # não exija API_KEY no ambiente de teste.
 os.environ.setdefault("DEBUG", "true")
+os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-for-tests")
 
 from unittest.mock import AsyncMock, patch
 
