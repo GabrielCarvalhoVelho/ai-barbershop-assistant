@@ -47,7 +47,12 @@ async def company(session):
 
 @pytest_asyncio.fixture
 async def user(session, company):
-    user = User(company_id=company.id, name="João", phone="+5511999887766")
+    user = User(
+        company_id=company.id,
+        name="João",
+        phone="+5511999887766",
+        password_hash="placeholder",
+    )
     session.add(user)
     await session.commit()
     await session.refresh(user)

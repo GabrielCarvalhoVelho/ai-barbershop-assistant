@@ -70,7 +70,12 @@ async def setup_db():
         await session.commit()
         await session.refresh(company)
 
-        user = User(company_id=company.id, name="Teste", phone="+5511999000000")
+        user = User(
+            company_id=company.id,
+            name="Teste",
+            phone="+5511999000000",
+            password_hash="placeholder",
+        )
         session.add(user)
         await session.commit()
 
@@ -99,6 +104,7 @@ async def setup_db():
             company_id=company2.id,
             name="Outro Cliente",
             phone="+5511988888888",
+            password_hash="placeholder",
         )
         session.add(user2)
         await session.commit()

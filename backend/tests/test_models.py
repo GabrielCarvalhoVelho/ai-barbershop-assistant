@@ -96,6 +96,7 @@ class TestUserModel:
             company_id=company.id,
             name="João Silva",
             phone="+5511999887766",
+            password_hash="placeholder",
         )
         session.add(user)
         await session.commit()
@@ -113,6 +114,7 @@ class TestUserModel:
             name="João Silva",
             phone="+5511999887766",
             email="joao@email.com",
+            password_hash="placeholder",
         )
         session.add(user)
         await session.commit()
@@ -126,6 +128,7 @@ class TestUserModel:
             company_id=company.id,
             name="Maria",
             phone="+5511999887755",
+            password_hash="placeholder",
         )
         session.add(user)
         await session.commit()
@@ -140,6 +143,7 @@ class TestUserModel:
             company_id=company.id,
             name="Carlos",
             phone="+5511999887744",
+            password_hash="placeholder",
         )
         session.add(user)
         await session.commit()
@@ -153,6 +157,7 @@ class TestUserModel:
             company_id=company.id,
             name="João",
             phone="+5511999887766",
+            password_hash="placeholder",
         )
         session.add(user1)
         await session.commit()
@@ -161,6 +166,7 @@ class TestUserModel:
             company_id=company.id,
             name="Maria",
             phone="+5511999887766",
+            password_hash="placeholder",
         )
         session.add(user2)
         with pytest.raises(Exception):
@@ -173,6 +179,7 @@ class TestUserModel:
             name="João",
             phone="+5511999887766",
             email="joao@email.com",
+            password_hash="placeholder",
         )
         session.add(user1)
         await session.commit()
@@ -182,10 +189,66 @@ class TestUserModel:
             name="Maria",
             phone="+5511999887755",
             email="joao@email.com",
+            password_hash="placeholder",
         )
         session.add(user2)
         with pytest.raises(Exception):
             await session.commit()
+
+    @pytest.mark.asyncio
+    async def test_is_active_defaults_to_true(self, session, company):
+        user = User(
+            company_id=company.id,
+            name="Ativo",
+            phone="+5511999887733",
+            password_hash="placeholder",
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+        assert user.is_active is True
+
+    @pytest.mark.asyncio
+    async def test_can_set_is_active_false(self, session, company):
+        user = User(
+            company_id=company.id,
+            name="Inativo",
+            phone="+5511999887722",
+            password_hash="placeholder",
+            is_active=False,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+        assert user.is_active is False
+
+    @pytest.mark.asyncio
+    async def test_password_hash_is_required(self, session, company):
+        user = User(
+            company_id=company.id,
+            name="Sem Senha",
+            phone="+5511999887711",
+        )
+        session.add(user)
+        with pytest.raises(Exception):
+            await session.commit()
+
+    @pytest.mark.asyncio
+    async def test_password_hash_stored_correctly(self, session, company):
+        hash_value = "$2b$12$KRhijZ4qabcdefghijklmnopqrstuvwxyz0123456789ABCD"
+        user = User(
+            company_id=company.id,
+            name="Com Senha",
+            phone="+5511999887700",
+            password_hash=hash_value,
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+        assert user.password_hash == hash_value
 
     @pytest.mark.asyncio
     async def test_company_id_has_index(self):
@@ -203,6 +266,7 @@ async def user(session, company):
         company_id=company.id,
         name="João Silva",
         phone="+5511999887766",
+        password_hash="placeholder",
     )
     session.add(user)
     await session.commit()

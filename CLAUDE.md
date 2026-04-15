@@ -8,7 +8,9 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: RAG concluído (itens 11-14 do roadmap)** — 456 testes automatizados. IA generativa (Groq + LangChain), prompts modulares com dados do negócio, base de conhecimento com 11 documentos seed, **pipeline RAG completo** (busca → formatação → injeção no prompt). Próximo: agendamento automático.
+**Fase: RAG + Fallback concluídos** — 460 testes automatizados. IA generativa (Groq + LangChain), prompts modulares com dados do negócio, base de conhecimento com 11 documentos seed, **pipeline RAG completo** (busca → formatação → injeção no prompt), **fallback explícito** para off-topic e informação desconhecida (orienta contato por telefone). Próximo: agendamento automático.
+
+**Fallback para respostas desconhecidas concluído:** Regras reforçadas em `_RULES` do prompt — (1) perguntas off-topic: LLM informa explicitamente que só atende assuntos da barbearia (serviços, preços, horários, agendamentos); (2) informação desconhecida: LLM orienta cliente a entrar em contato pelo telefone da barbearia (telefone real já está no prompt via `_build_business_details`, sem hardcode). Prompt-level only, zero novos models/endpoints.
 
 **RAG concluído (item 14):** Pipeline completo de busca de contexto. `KnowledgeDocumentRepository.get_by_company()` carrega todos os documentos ativos da empresa (~11-50 docs, ~600 tokens — cabe nos 128k do Llama 3.3 70B). `format_knowledge_context()` em `app/modules/ai/context_service.py` agrupa por categoria com labels PT-BR ([Serviços], [Horário de Funcionamento], [Políticas], [Perguntas Frequentes], [Informações Gerais]). Controller injeta o contexto via `build_system_prompt(business_info, context)`. Estratégia: carregar tudo, deixar o LLM filtrar — zero falsos negativos, zero complexidade desnecessária. Sem keyword matching, sem embeddings.
 
@@ -103,7 +105,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
   - Migration `f97c79dc2341`: converte `status` e `sender` de VARCHAR para ENUM nativo no PostgreSQL (com `USING cast`, `checkfirst=True`)
 - **5 Models SQLAlchemy** (centralizados em `app/models/`):
   - `Company`: id, name, address, phone, created_at, updated_at
-  - `User`: id, company_id (FK RESTRICT), name, phone (UNIQUE), email (UNIQUE), created_at, updated_at
+  - `User`: id, company_id (FK RESTRICT), name, phone (UNIQUE), email (UNIQUE), is_active (default true), password_hash, created_at, updated_at
   - `Conversation`: id, user_id (FK RESTRICT), company_id (FK RESTRICT), status (`ConversationStatus` enum: active/closed), started_at, ended_at
   - `Message`: id, conversation_id (FK CASCADE), sender (`MessageSender` enum: user/bot), content, created_at
   - `KnowledgeDocument`: id, company_id (FK RESTRICT), title, content (Text), category (`DocumentCategory` enum), is_active (default true), created_at, updated_at — índice composto (company_id, category)
@@ -116,7 +118,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 - **Pool config otimizado para Supabase:** SQLite usa StaticPool (testes), PostgreSQL usa pool_size=5, max_overflow=10, pool_recycle=300, pool_pre_ping=True
 - **Índices otimizados:** índice composto (conversation_id, created_at) em messages cobre query paginada (index-only scan)
 - **Teste modernizados:** pytest.ini com `asyncio_mode = auto`, fixtures async nativas (`@pytest_asyncio.fixture`), sem `asyncio.new_event_loop()` manual
-- **456 testes automatizados** — todos passando (prompts: 23, knowledge model: 11, knowledge repository: 12, LLM service: 9, context_service: 9, GROQ_API_KEY prod: 4, AIServiceError: 4, RAG controller: 4, RAG service: 3, RAG integração: 2)
+- **460 testes automatizados** — todos passando (prompts: 27, knowledge model: 11, knowledge repository: 12, LLM service: 9, context_service: 9, GROQ_API_KEY prod: 4, AIServiceError: 4, RAG controller: 4, RAG service: 3, RAG integração: 2, fallback: 4)
 - `conftest.py` com fixtures `client`, `reset_rate_limiter` (autouse), `setup_db`, `db_session`, `mock_llm` (autouse global — nenhum teste chama API real do Groq) — todas async nativas com pytest-asyncio. `os.environ.setdefault("DEBUG", "true")` antes dos imports para compatibilidade com o validator de API key.
 - Dependências separadas: `requirements.txt` (prod) e `requirements-dev.txt` (dev)
 
@@ -196,7 +198,7 @@ backend/
   tests/
     modules/
       ai/
-        test_prompts.py            # 23 testes do build_system_prompt (BusinessInfo, seções, dados opcionais, contexto RAG)
+        test_prompts.py            # 27 testes do build_system_prompt (BusinessInfo, seções, dados opcionais, contexto RAG, fallback)
         test_llm_service.py        # 9 testes do generate_ai_response (mock ChatGroq, system_prompt, histórico, erro)
         test_context_service.py    # 9 testes do format_knowledge_context (vazio, agrupamento, labels PT-BR, ordem)
       chat/
@@ -292,7 +294,8 @@ python -m pytest tests/ -v
 12. ~~Criar estrutura de prompts da IA (prompt modular, BusinessInfo, build_system_prompt, 415 testes)~~ ✅
 13. ~~Criar base de conhecimento do sistema (KnowledgeDocument, DocumentCategory, seed 11 docs, 438 testes)~~ ✅
 14. ~~Implementar busca de contexto (RAG) — context_service, agrupamento por categoria, integração no controller, 456 testes~~ ✅
-15. **Agendamento automático de horários** ← PRÓXIMO
+15. ~~Fallback para respostas desconhecidas — regras de off-topic e informação desconhecida reforçadas no prompt, 460 testes~~ ✅
+16. **Agendamento automático de horários** ← PRÓXIMO
 16. Integração com WhatsApp/Instagram
 17. Autenticação e dashboard administrativo ← `user_id`/`company_id` migram do body para token JWT nesta task
 18. Docker + deploy

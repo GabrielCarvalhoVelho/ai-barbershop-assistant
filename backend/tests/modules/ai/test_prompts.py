@@ -158,3 +158,30 @@ class TestBuildSystemPromptStructure:
         assert "Informações da barbearia:" in prompt
         assert "Regras:" in prompt
         assert "Serviços: corte, barba" in prompt
+
+
+# ========================
+# build_system_prompt — fallback para respostas desconhecidas
+# ========================
+
+
+class TestBuildSystemPromptFallback:
+    def test_off_topic_rule_restricts_to_barbershop(self):
+        prompt = build_system_prompt(_info_name_only())
+        assert "não relacionado à barbearia" in prompt
+        assert "só pode ajudar com assuntos da barbearia" in prompt
+
+    def test_unknown_info_rule_directs_to_phone_contact(self):
+        prompt = build_system_prompt(_info_name_only())
+        assert "entrar em contato pelo telefone da barbearia" in prompt
+
+    def test_fallback_prompt_with_phone_has_phone_number(self):
+        prompt = build_system_prompt(_info_full())
+        assert "entrar em contato pelo telefone da barbearia" in prompt
+        assert "(11) 99999-0000" in prompt
+
+    def test_fallback_rules_present_even_without_phone(self):
+        prompt = build_system_prompt(_info_name_only())
+        assert "Telefone" not in prompt
+        assert "entrar em contato pelo telefone da barbearia" in prompt
+        assert "só pode ajudar com assuntos da barbearia" in prompt

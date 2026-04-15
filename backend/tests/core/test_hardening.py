@@ -42,7 +42,12 @@ async def conversation(session):
     await session.commit()
     await session.refresh(company)
 
-    user = User(company_id=company.id, name="João", phone="+5511999000111")
+    user = User(
+        company_id=company.id,
+        name="João",
+        phone="+5511999000111",
+        password_hash="placeholder",
+    )
     session.add(user)
     await session.commit()
     await session.refresh(user)

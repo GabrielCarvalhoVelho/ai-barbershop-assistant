@@ -123,6 +123,7 @@ async def seed_dev_data(session: AsyncSession) -> None:
         name="Cliente Teste",
         phone="+5511900000000",
         email="teste@barbershop.dev",
+        password_hash="placeholder",
     )
     session.add(user)
     await session.flush()
