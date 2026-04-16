@@ -5,6 +5,7 @@ from app.core.security import create_access_token, hash_password
 from app.models.enums import UserRole
 from app.models.user import User
 
+TEST_PHONE = "+5511777000099"
 TEST_EMAIL = "auth_test@barbershop.dev"
 TEST_PASSWORD = "test_pass_auth_123"
 

@@ -1,25 +1,26 @@
 from datetime import timedelta
 
 from app.core.security import create_access_token
-from tests.modules.auth.conftest import TEST_EMAIL, TEST_PASSWORD
+from tests.modules.auth.conftest import TEST_EMAIL, TEST_PHONE, TEST_PASSWORD
 
 
 class TestLoginRoute:
     def test_login_success(self, client, auth_user):
         response = client.post(
             "/api/v1/auth/login",
-            json={"email": TEST_EMAIL, "password": TEST_PASSWORD},
+            json={"phone": TEST_PHONE, "password": TEST_PASSWORD},
         )
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
         assert body["data"]["access_token"]
         assert body["data"]["token_type"] == "bearer"
+        assert "expires_in" in body["data"]
 
     def test_login_wrong_password_401(self, client, auth_user):
         response = client.post(
             "/api/v1/auth/login",
-            json={"email": TEST_EMAIL, "password": "wrong_password"},
+            json={"phone": TEST_PHONE, "password": "wrong_password"},
         )
         assert response.status_code == 401
         assert response.json()["success"] is False
@@ -27,11 +28,11 @@ class TestLoginRoute:
     def test_login_user_not_found_401(self, client):
         response = client.post(
             "/api/v1/auth/login",
-            json={"email": "nobody@test.com", "password": "pass"},
+            json={"phone": "+5599000000000", "password": "pass"},
         )
         assert response.status_code == 401
 
-    def test_login_missing_email_422(self, client):
+    def test_login_missing_phone_422(self, client):
         response = client.post(
             "/api/v1/auth/login",
             json={"password": "pass123"},
@@ -41,7 +42,7 @@ class TestLoginRoute:
     def test_login_missing_password_422(self, client):
         response = client.post(
             "/api/v1/auth/login",
-            json={"email": TEST_EMAIL},
+            json={"phone": TEST_PHONE},
         )
         assert response.status_code == 422
 

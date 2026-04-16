@@ -7,31 +7,35 @@ from app.modules.auth.schemas import LoginRequest, TokenResponse, UserMeResponse
 
 class TestLoginRequest:
     def test_valid(self):
-        req = LoginRequest(email="user@example.com", password="pass123")
-        assert req.email == "user@example.com"
+        req = LoginRequest(phone="+5511999000000", password="pass123")
+        assert req.phone == "+5511999000000"
         assert req.password == "pass123"
 
-    def test_missing_email(self):
+    def test_missing_phone(self):
         with pytest.raises(ValidationError):
             LoginRequest(password="pass123")
 
     def test_missing_password(self):
         with pytest.raises(ValidationError):
-            LoginRequest(email="user@example.com")
+            LoginRequest(phone="+5511999000000")
 
     def test_empty_password_fails(self):
         with pytest.raises(ValidationError):
-            LoginRequest(email="user@example.com", password="")
+            LoginRequest(phone="+5511999000000", password="")
 
 
 class TestTokenResponse:
     def test_default_token_type(self):
-        resp = TokenResponse(access_token="abc.def.ghi")
+        resp = TokenResponse(access_token="abc.def.ghi", expires_in=1800)
         assert resp.token_type == "bearer"
 
     def test_access_token_stored(self):
-        resp = TokenResponse(access_token="my.jwt.token")
+        resp = TokenResponse(access_token="my.jwt.token", expires_in=1800)
         assert resp.access_token == "my.jwt.token"
+
+    def test_expires_in_stored(self):
+        resp = TokenResponse(access_token="tok", expires_in=1800)
+        assert resp.expires_in == 1800
 
 
 class TestUserMeResponse:

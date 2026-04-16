@@ -14,8 +14,6 @@ from app.modules.chat.schemas import (
     PaginationResponse,
 )
 
-IDS = {"user_id": 1, "company_id": 1}
-
 
 # ========================
 # ChatRequest - válidos
@@ -23,40 +21,40 @@ IDS = {"user_id": 1, "company_id": 1}
 
 class TestChatRequestValid:
     def test_normal_message(self):
-        req = ChatRequest(message="Quero agendar um corte", **IDS)
+        req = ChatRequest(message="Quero agendar um corte")
         assert req.message == "Quero agendar um corte"
 
     def test_short_message(self):
-        req = ChatRequest(message="oi", **IDS)
+        req = ChatRequest(message="oi")
         assert req.message == "oi"
 
     def test_numbers_only(self):
-        req = ChatRequest(message="123", **IDS)
+        req = ChatRequest(message="123")
         assert req.message == "123"
 
     def test_max_length_message(self):
         msg = "a" * 499 + "b"
-        req = ChatRequest(message=msg, **IDS)
+        req = ChatRequest(message=msg)
         assert len(req.message) == 500
 
     def test_strips_whitespace(self):
-        req = ChatRequest(message="  olá  ", **IDS)
+        req = ChatRequest(message="  olá  ")
         assert req.message == "olá"
 
     def test_mixed_content(self):
-        req = ChatRequest(message="Olá! Tudo bem? #123", **IDS)
+        req = ChatRequest(message="Olá! Tudo bem? #123")
         assert req.message == "Olá! Tudo bem? #123"
 
     def test_accented_characters(self):
-        req = ChatRequest(message="Ação, coração, café", **IDS)
+        req = ChatRequest(message="Ação, coração, café")
         assert req.message == "Ação, coração, café"
 
     def test_single_char_accepted(self):
-        req = ChatRequest(message="a", **IDS)
+        req = ChatRequest(message="a")
         assert req.message == "a"
 
     def test_different_repeated_chars(self):
-        req = ChatRequest(message="ababab", **IDS)
+        req = ChatRequest(message="ababab")
         assert req.message == "ababab"
 
 
@@ -67,32 +65,32 @@ class TestChatRequestValid:
 class TestChatRequestInvalid:
     def test_empty_string(self):
         with pytest.raises(ValidationError) as exc_info:
-            ChatRequest(message="", **IDS)
+            ChatRequest(message="")
         assert "at least 1 character" in str(exc_info.value)
 
     def test_only_whitespace(self):
         with pytest.raises(ValidationError) as exc_info:
-            ChatRequest(message="     ", **IDS)
+            ChatRequest(message="     ")
         assert "não pode estar vazia" in str(exc_info.value)
 
     def test_only_special_chars(self):
         with pytest.raises(ValidationError) as exc_info:
-            ChatRequest(message="!!!@#$%", **IDS)
+            ChatRequest(message="!!!@#$%")
         assert "pelo menos uma letra ou número" in str(exc_info.value)
 
     def test_only_punctuation(self):
         with pytest.raises(ValidationError) as exc_info:
-            ChatRequest(message="...", **IDS)
+            ChatRequest(message="...")
         assert "pelo menos uma letra ou número" in str(exc_info.value)
 
     def test_single_repeated_char(self):
         with pytest.raises(ValidationError) as exc_info:
-            ChatRequest(message="aaaaaaa", **IDS)
+            ChatRequest(message="aaaaaaa")
         assert "caracteres repetidos" in str(exc_info.value)
 
     def test_exceeds_max_length(self):
         with pytest.raises(ValidationError) as exc_info:
-            ChatRequest(message="a" * 501, **IDS)
+            ChatRequest(message="a" * 501)
         assert "at most 500 character" in str(exc_info.value)
 
     def test_missing_field(self):
@@ -102,38 +100,7 @@ class TestChatRequestInvalid:
 
     def test_wrong_type(self):
         with pytest.raises(ValidationError):
-            ChatRequest(message=["not", "a", "string"], **IDS)
-
-
-# ========================
-# ChatRequest - user_id e company_id
-# ========================
-
-class TestChatRequestUserCompany:
-    def test_accepts_valid_ids(self):
-        req = ChatRequest(message="Oi", user_id=1, company_id=1)
-        assert req.user_id == 1
-        assert req.company_id == 1
-
-    def test_rejects_zero_user_id(self):
-        with pytest.raises(ValidationError):
-            ChatRequest(message="Oi", user_id=0, company_id=1)
-
-    def test_rejects_negative_company_id(self):
-        with pytest.raises(ValidationError):
-            ChatRequest(message="Oi", user_id=1, company_id=-1)
-
-    def test_rejects_missing_user_id(self):
-        with pytest.raises(ValidationError):
-            ChatRequest(message="Oi", company_id=1)
-
-    def test_rejects_missing_company_id(self):
-        with pytest.raises(ValidationError):
-            ChatRequest(message="Oi", user_id=1)
-
-    def test_rejects_string_user_id(self):
-        with pytest.raises(ValidationError):
-            ChatRequest(message="Oi", user_id="abc", company_id=1)
+            ChatRequest(message=["not", "a", "string"])
 
 
 # ========================
@@ -142,20 +109,20 @@ class TestChatRequestUserCompany:
 
 class TestChatRequestConversationId:
     def test_defaults_to_none(self):
-        req = ChatRequest(message="Olá", **IDS)
+        req = ChatRequest(message="Olá")
         assert req.conversation_id is None
 
     def test_accepts_valid_id(self):
-        req = ChatRequest(message="Olá", **IDS, conversation_id=42)
+        req = ChatRequest(message="Olá", conversation_id=42)
         assert req.conversation_id == 42
 
     def test_accepts_explicit_none(self):
-        req = ChatRequest(message="Olá", **IDS, conversation_id=None)
+        req = ChatRequest(message="Olá", conversation_id=None)
         assert req.conversation_id is None
 
     def test_rejects_invalid_type(self):
         with pytest.raises(ValidationError):
-            ChatRequest(message="Olá", **IDS, conversation_id="abc")
+            ChatRequest(message="Olá", conversation_id="abc")
 
 
 # ========================

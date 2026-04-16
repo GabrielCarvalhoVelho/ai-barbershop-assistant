@@ -28,20 +28,21 @@ class TestAuthController:
     async def test_login_returns_success_response(self):
         user = _make_user()
         repo = AsyncMock()
-        repo.get_by_email.return_value = user
-        request = LoginRequest(email="ctrl@test.com", password="ctrl_pass")
+        repo.get_by_phone.return_value = user
+        request = LoginRequest(phone="+5511000000005", password="ctrl_pass")
 
         response = await AuthController.login(request, repo)
 
         assert response.success is True
         assert "access_token" in response.data
         assert response.data["access_token"]
+        assert "expires_in" in response.data
 
     @pytest.mark.asyncio
     async def test_login_bad_credentials_propagates(self):
         repo = AsyncMock()
-        repo.get_by_email.return_value = None
-        request = LoginRequest(email="nobody@test.com", password="pass")
+        repo.get_by_phone.return_value = None
+        request = LoginRequest(phone="+5599000000000", password="pass")
 
         with pytest.raises(AuthenticationError):
             await AuthController.login(request, repo)

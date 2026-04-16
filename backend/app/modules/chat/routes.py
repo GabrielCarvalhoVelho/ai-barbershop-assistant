@@ -1,9 +1,10 @@
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_api_key
+from app.core.auth import get_current_user
 from app.core.rate_limiter import limiter
 from app.db.database import get_session
+from app.models.user import User
 from app.modules.chat.controller import ChatController
 from app.modules.chat.repository import ConversationRepository, MessageRepository
 from app.repositories import CompanyRepository, KnowledgeDocumentRepository, UserRepository
@@ -24,11 +25,11 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
         },
         401: {
             "model": ErrorResponse,
-            "description": "API key ausente (AUTH_001)",
+            "description": "Token ausente ou inválido (AUTH_003)",
         },
         403: {
             "model": ErrorResponse,
-            "description": "API key inválida (AUTH_002)",
+            "description": "Sem permissão (AUTH_002)",
         },
         404: {
             "model": ErrorResponse,
@@ -55,12 +56,12 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
             "description": "Serviço indisponível — banco fora do ar ou timeout (DB_003)",
         },
     },
-    dependencies=[Depends(require_api_key)],
 )
 @limiter.limit("10/minute")
 async def chat(
     request: Request,
     body: ChatRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     conversation_repo = ConversationRepository(session)
@@ -70,6 +71,8 @@ async def chat(
     knowledge_repo = KnowledgeDocumentRepository(session)
     return await ChatController.send_message(
         body,
+        user_id=current_user.id,
+        company_id=current_user.company_id,
         conversation_repo=conversation_repo,
         message_repo=message_repo,
         user_repo=user_repo,

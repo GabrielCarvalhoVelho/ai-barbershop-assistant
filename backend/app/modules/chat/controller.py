@@ -12,7 +12,6 @@ from app.modules.chat.schemas import (
     ConversationMessagesResponse,
     ConversationResponse,
     ConversationSummaryResponse,
-    CreateConversationRequest,
     MessageResponse,
     PaginationResponse,
 )
@@ -26,6 +25,8 @@ class ChatController:
     @staticmethod
     async def send_message(
         request: ChatRequest,
+        user_id: int,
+        company_id: int,
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
         user_repo: UserRepository,
@@ -34,21 +35,21 @@ class ChatController:
     ) -> SuccessResponse:
         logger.info(
             "Chat iniciado: user_id=%s company_id=%s message_length=%s",
-            request.user_id,
-            request.company_id,
+            user_id,
+            company_id,
             len(request.message),
         )
 
-        user = await user_repo.get_by_id(request.user_id)
+        user = await user_repo.get_by_id(user_id)
         if user is None:
             raise NotFoundError(
-                message=f"Usuário {request.user_id} não encontrado.",
+                message=f"Usuário {user_id} não encontrado.",
             )
 
-        company = await company_repo.get_by_id(request.company_id)
+        company = await company_repo.get_by_id(company_id)
         if company is None:
             raise NotFoundError(
-                message=f"Empresa {request.company_id} não encontrada.",
+                message=f"Empresa {company_id} não encontrada.",
             )
 
         conversation_id = request.conversation_id
@@ -59,7 +60,7 @@ class ChatController:
                 raise NotFoundError(
                     message=f"Conversa {conversation_id} não encontrada.",
                 )
-            if conversation.user_id != request.user_id or conversation.company_id != request.company_id:
+            if conversation.user_id != user_id or conversation.company_id != company_id:
                 raise AuthorizationError(
                     message=f"Conversa {conversation_id} não pertence ao usuário ou empresa informados.",
                 )
@@ -70,8 +71,8 @@ class ChatController:
             logger.info("Conversa existente: id=%s", conversation_id)
         else:
             conversation = await conversation_repo.create(
-                user_id=request.user_id,
-                company_id=request.company_id,
+                user_id=user_id,
+                company_id=company_id,
             )
             conversation_id = conversation.id
             logger.info("Nova conversa criada: id=%s", conversation_id)
@@ -87,7 +88,7 @@ class ChatController:
             address=company.address,
         )
 
-        documents = await knowledge_repo.get_by_company(request.company_id)
+        documents = await knowledge_repo.get_by_company(company_id)
         context = format_knowledge_context(documents)
 
         response_text = await generate_response(
@@ -124,32 +125,33 @@ class ChatController:
 class ConversationController:
     @staticmethod
     async def create(
-        request: CreateConversationRequest,
+        user_id: int,
+        company_id: int,
         conversation_repo: ConversationRepository,
         user_repo: UserRepository,
         company_repo: CompanyRepository,
     ) -> SuccessResponse:
         logger.info(
             "Criando conversa: user_id=%s company_id=%s",
-            request.user_id,
-            request.company_id,
+            user_id,
+            company_id,
         )
 
-        user = await user_repo.get_by_id(request.user_id)
+        user = await user_repo.get_by_id(user_id)
         if user is None:
             raise NotFoundError(
-                message=f"Usuário {request.user_id} não encontrado.",
+                message=f"Usuário {user_id} não encontrado.",
             )
 
-        company = await company_repo.get_by_id(request.company_id)
+        company = await company_repo.get_by_id(company_id)
         if company is None:
             raise NotFoundError(
-                message=f"Empresa {request.company_id} não encontrada.",
+                message=f"Empresa {company_id} não encontrada.",
             )
 
         conversation = await conversation_repo.create(
-            user_id=request.user_id,
-            company_id=request.company_id,
+            user_id=user_id,
+            company_id=company_id,
         )
 
         logger.info("Conversa criada: id=%s", conversation.id)

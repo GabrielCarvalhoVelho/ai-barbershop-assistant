@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.exceptions import AuthenticationError, AuthorizationError, InvalidTokenError
+from app.models.enums import UserRole
 from app.core.security import decode_access_token
 from app.db.database import get_session
 from app.models.user import User
@@ -48,3 +49,18 @@ async def get_current_user(
     if user is None or not user.is_active:
         raise InvalidTokenError(message="Usuário não encontrado ou inativo.")
     return user
+
+
+def require_role(*roles: UserRole):
+    """Factory que retorna uma dependency FastAPI que exige o(s) role(s) informado(s).
+
+    Uso:
+        @router.get("/admin/...")
+        async def rota(user: User = Depends(require_role(UserRole.ADMIN))):
+            ...
+    """
+    async def _check_role(current_user: User = Depends(get_current_user)) -> User:
+        if current_user.role not in roles:
+            raise AuthorizationError(message="Permissão insuficiente.")
+        return current_user
+    return _check_role

@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_api_key
+from app.core.auth import get_current_user, require_api_key
 from app.core.rate_limiter import limiter
 from app.db.database import get_session
+from app.models.user import User
 from app.modules.chat.controller import ConversationController
 from app.modules.chat.repository import ConversationRepository, MessageRepository
 from app.repositories import CompanyRepository, UserRepository
-from app.modules.chat.schemas import CreateConversationRequest
 from app.schemas.base_schema import SuccessResponse
 from app.schemas.error_schema import ErrorResponse
 
@@ -21,11 +21,11 @@ router = APIRouter(prefix="/api/v1", tags=["conversations"])
     responses={
         401: {
             "model": ErrorResponse,
-            "description": "API key ausente (AUTH_001)",
+            "description": "Token ausente ou inválido (AUTH_003)",
         },
         403: {
             "model": ErrorResponse,
-            "description": "API key inválida (AUTH_002)",
+            "description": "Sem permissão (AUTH_002)",
         },
         404: {
             "model": ErrorResponse,
@@ -52,19 +52,19 @@ router = APIRouter(prefix="/api/v1", tags=["conversations"])
             "description": "Serviço indisponível — banco fora do ar ou timeout (DB_003)",
         },
     },
-    dependencies=[Depends(require_api_key)],
 )
 @limiter.limit("10/minute")
 async def create_conversation(
     request: Request,
-    body: CreateConversationRequest,
+    current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_session),
 ):
     conversation_repo = ConversationRepository(session)
     user_repo = UserRepository(session)
     company_repo = CompanyRepository(session)
     return await ConversationController.create(
-        body,
+        user_id=current_user.id,
+        company_id=current_user.company_id,
         conversation_repo=conversation_repo,
         user_repo=user_repo,
         company_repo=company_repo,

@@ -28,3 +28,11 @@ class UserRepository:
             timeout=DB_TIMEOUT_SECONDS,
         )
         return result.scalars().first()
+
+    @db_operation("buscar usuário por telefone")
+    async def get_by_phone(self, phone: str) -> User | None:
+        result = await asyncio.wait_for(
+            self._session.execute(select(User).where(User.phone == phone)),
+            timeout=DB_TIMEOUT_SECONDS,
+        )
+        return result.scalars().first()

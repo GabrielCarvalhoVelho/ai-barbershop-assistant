@@ -41,3 +41,25 @@ class TestUserRepositoryGetByEmail:
         result = await repo.get_by_id(repo_user.id)
         assert result is not None
         assert result.id == repo_user.id
+
+
+class TestUserRepositoryGetByPhone:
+    @pytest.mark.asyncio
+    async def test_get_by_phone_found(self, db_session, repo_user):
+        repo = UserRepository(db_session)
+        result = await repo.get_by_phone(repo_user.phone)
+        assert result is not None
+        assert result.id == repo_user.id
+
+    @pytest.mark.asyncio
+    async def test_get_by_phone_not_found(self, db_session):
+        repo = UserRepository(db_session)
+        result = await repo.get_by_phone("+5500000000000")
+        assert result is None
+
+    @pytest.mark.asyncio
+    async def test_get_by_email_still_works(self, db_session, repo_user):
+        repo = UserRepository(db_session)
+        result = await repo.get_by_email("repo@test.com")
+        assert result is not None
+        assert result.id == repo_user.id
