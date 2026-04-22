@@ -53,6 +53,20 @@ def _make_repos(conversation=None):
     return conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
 
 
+def _call(request, *repos, user_id=1, company_id=1):
+    conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = repos
+    return ChatController.send_message(
+        request,
+        user_id=user_id,
+        company_id=company_id,
+        conversation_repo=conv_repo,
+        message_repo=msg_repo,
+        user_repo=user_repo,
+        company_repo=company_repo,
+        knowledge_repo=knowledge_repo,
+    )
+
+
 # ========================
 # Fluxo sem conversation_id (nova conversa)
 # ========================
@@ -62,79 +76,69 @@ class TestChatControllerNewConversation:
     @pytest.mark.asyncio
     async def test_creates_conversation_when_no_id(self):
         conv = _make_conversation(id_=10)
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
+        repos = _make_repos(conv)
 
-        request = ChatRequest(message="Quero agendar", user_id=1, company_id=1)
+        request = ChatRequest(message="Quero agendar")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            response = await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            response = await _call(request, *repos)
 
-        conv_repo.create.assert_called_once_with(user_id=1, company_id=1)
+        repos[0].create.assert_called_once_with(user_id=1, company_id=1)
         assert response.data["conversation_id"] == 10
 
     @pytest.mark.asyncio
     async def test_passes_user_and_company_to_create(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
+        repos = _make_repos()
+        conv_repo, _, user_repo, company_repo, _ = repos
         user_repo.get_by_id.return_value = AsyncMock(id=7)
         company_repo.get_by_id.return_value = _make_company(id_=3)
 
-        request = ChatRequest(message="Oi", user_id=7, company_id=3)
+        request = ChatRequest(message="Oi")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=7, company_id=3)
 
         conv_repo.create.assert_called_once_with(user_id=7, company_id=3)
 
     @pytest.mark.asyncio
     async def test_returns_success_response(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
+        repos = _make_repos()
 
-        request = ChatRequest(message="Olá", user_id=1, company_id=1)
+        request = ChatRequest(message="Olá")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            response = await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            response = await _call(request, *repos)
 
         assert isinstance(response, SuccessResponse)
         assert response.success is True
 
     @pytest.mark.asyncio
     async def test_data_contains_response_and_conversation_id(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
+        repos = _make_repos()
 
-        request = ChatRequest(message="Olá", user_id=1, company_id=1)
+        request = ChatRequest(message="Olá")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            response = await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            response = await _call(request, *repos)
 
         assert "response" in response.data
         assert "conversation_id" in response.data
 
     @pytest.mark.asyncio
     async def test_response_comes_from_llm(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
+        repos = _make_repos()
 
-        request = ChatRequest(message="Olá", user_id=1, company_id=1)
+        request = ChatRequest(message="Olá")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            response = await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            response = await _call(request, *repos)
 
         assert response.data["response"] == MOCK_AI_RESPONSE
 
     @pytest.mark.asyncio
     async def test_saves_user_and_bot_messages_atomically(self):
         conv = _make_conversation(id_=5)
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
+        repos = _make_repos(conv)
+        _, msg_repo, *_ = repos
 
-        request = ChatRequest(message="Oi", user_id=1, company_id=1)
+        request = ChatRequest(message="Oi")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos)
 
         msg_repo.save_pair.assert_called_once_with(
             conversation_id=5,
@@ -152,46 +156,40 @@ class TestChatControllerExistingConversation:
     @pytest.mark.asyncio
     async def test_uses_existing_conversation(self):
         conv = _make_conversation(id_=42)
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
+        repos = _make_repos(conv)
 
-        request = ChatRequest(message="Oi", user_id=1, company_id=1, conversation_id=42)
+        request = ChatRequest(message="Oi", conversation_id=42)
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            response = await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            response = await _call(request, *repos)
 
-        conv_repo.get_by_id.assert_called_once_with(42)
-        conv_repo.create.assert_not_called()
+        repos[0].get_by_id.assert_called_once_with(42)
+        repos[0].create.assert_not_called()
         assert response.data["conversation_id"] == 42
 
     @pytest.mark.asyncio
     async def test_not_found_raises_404(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
-        conv_repo.get_by_id.return_value = None
+        repos = _make_repos()
+        repos[0].get_by_id.return_value = None
 
-        request = ChatRequest(message="Oi", user_id=1, company_id=1, conversation_id=999)
+        request = ChatRequest(message="Oi", conversation_id=999)
 
         with pytest.raises(NotFoundError) as exc_info:
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos)
 
         assert "999" in exc_info.value.message
 
     @pytest.mark.asyncio
     async def test_closed_conversation_raises_400(self):
         conv = _make_conversation(id_=42, status="closed")
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
+        repos = _make_repos(conv)
 
-        request = ChatRequest(message="Oi", user_id=1, company_id=1, conversation_id=42)
+        request = ChatRequest(message="Oi", conversation_id=42)
 
         with pytest.raises(BusinessError) as exc_info:
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos)
 
         assert "encerrada" in exc_info.value.message
-        msg_repo.save_pair.assert_not_called()
+        repos[1].save_pair.assert_not_called()
 
 
 # ========================
@@ -202,48 +200,42 @@ class TestChatControllerExistingConversation:
 class TestChatControllerUserCompanyValidation:
     @pytest.mark.asyncio
     async def test_user_not_found_raises_404(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
-        user_repo.get_by_id.return_value = None
+        repos = _make_repos()
+        repos[2].get_by_id.return_value = None
 
-        request = ChatRequest(message="Oi", user_id=999, company_id=1)
+        request = ChatRequest(message="Oi")
 
         with pytest.raises(NotFoundError) as exc_info:
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=999, company_id=1)
 
         assert "999" in exc_info.value.message
-        conv_repo.create.assert_not_called()
+        repos[0].create.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_company_not_found_raises_404(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
-        company_repo.get_by_id.return_value = None
+        repos = _make_repos()
+        repos[3].get_by_id.return_value = None
 
-        request = ChatRequest(message="Oi", user_id=1, company_id=888)
+        request = ChatRequest(message="Oi")
 
         with pytest.raises(NotFoundError) as exc_info:
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=1, company_id=888)
 
         assert "888" in exc_info.value.message
-        conv_repo.create.assert_not_called()
+        repos[0].create.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_validates_user_before_company(self):
         """Se user não existe, nem checa company."""
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
-        user_repo.get_by_id.return_value = None
+        repos = _make_repos()
+        repos[2].get_by_id.return_value = None
 
-        request = ChatRequest(message="Oi", user_id=999, company_id=1)
+        request = ChatRequest(message="Oi")
 
         with pytest.raises(NotFoundError):
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=999, company_id=1)
 
-        company_repo.get_by_id.assert_not_called()
+        repos[3].get_by_id.assert_not_called()
 
 
 # ========================
@@ -255,61 +247,53 @@ class TestChatControllerConversationOwnership:
     @pytest.mark.asyncio
     async def test_wrong_user_id_raises_403(self):
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
-        user_repo.get_by_id.return_value = AsyncMock(id=99)
-        company_repo.get_by_id.return_value = _make_company(id_=1)
+        repos = _make_repos(conv)
+        repos[2].get_by_id.return_value = AsyncMock(id=99)
+        repos[3].get_by_id.return_value = _make_company(id_=1)
 
-        request = ChatRequest(message="Oi", user_id=99, company_id=1, conversation_id=42)
+        request = ChatRequest(message="Oi", conversation_id=42)
 
         with pytest.raises(AuthorizationError) as exc_info:
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=99, company_id=1)
 
         assert "não pertence" in exc_info.value.message
-        msg_repo.save_pair.assert_not_called()
+        repos[1].save_pair.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_wrong_company_id_raises_403(self):
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
-        user_repo.get_by_id.return_value = AsyncMock(id=1)
-        company_repo.get_by_id.return_value = _make_company(id_=99)
+        repos = _make_repos(conv)
+        repos[2].get_by_id.return_value = AsyncMock(id=1)
+        repos[3].get_by_id.return_value = _make_company(id_=99)
 
-        request = ChatRequest(message="Oi", user_id=1, company_id=99, conversation_id=42)
+        request = ChatRequest(message="Oi", conversation_id=42)
 
         with pytest.raises(AuthorizationError) as exc_info:
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=1, company_id=99)
 
         assert "não pertence" in exc_info.value.message
-        msg_repo.save_pair.assert_not_called()
+        repos[1].save_pair.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_wrong_user_and_company_raises_403(self):
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
-        user_repo.get_by_id.return_value = AsyncMock(id=50)
-        company_repo.get_by_id.return_value = _make_company(id_=60)
+        repos = _make_repos(conv)
+        repos[2].get_by_id.return_value = AsyncMock(id=50)
+        repos[3].get_by_id.return_value = _make_company(id_=60)
 
-        request = ChatRequest(message="Oi", user_id=50, company_id=60, conversation_id=42)
+        request = ChatRequest(message="Oi", conversation_id=42)
 
         with pytest.raises(AuthorizationError):
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=50, company_id=60)
 
     @pytest.mark.asyncio
     async def test_correct_ownership_passes(self):
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
+        repos = _make_repos(conv)
 
-        request = ChatRequest(message="Oi", user_id=1, company_id=1, conversation_id=42)
+        request = ChatRequest(message="Oi", conversation_id=42)
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            response = await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            response = await _call(request, *repos)
 
         assert response.data["conversation_id"] == 42
 
@@ -317,16 +301,14 @@ class TestChatControllerConversationOwnership:
     async def test_ownership_checked_before_closed_status(self):
         """Se a conversa não pertence ao user, retorna 403 mesmo que esteja closed."""
         conv = _make_conversation(id_=42, status="closed", user_id=1, company_id=1)
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos(conv)
-        user_repo.get_by_id.return_value = AsyncMock(id=99)
-        company_repo.get_by_id.return_value = _make_company(id_=1)
+        repos = _make_repos(conv)
+        repos[2].get_by_id.return_value = AsyncMock(id=99)
+        repos[3].get_by_id.return_value = _make_company(id_=1)
 
-        request = ChatRequest(message="Oi", user_id=99, company_id=1, conversation_id=42)
+        request = ChatRequest(message="Oi", conversation_id=42)
 
         with pytest.raises(AuthorizationError):
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=99, company_id=1)
 
 
 # ========================
@@ -337,25 +319,21 @@ class TestChatControllerConversationOwnership:
 class TestChatControllerServiceDelegation:
     @pytest.mark.asyncio
     async def test_delegates_sanitization_to_service(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
+        repos = _make_repos()
 
-        request = ChatRequest(message="quero   agendar    corte", user_id=1, company_id=1)
+        request = ChatRequest(message="quero   agendar    corte")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            response = await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            response = await _call(request, *repos)
 
         assert response.data["response"] == MOCK_AI_RESPONSE
 
     @pytest.mark.asyncio
     async def test_delegates_business_validation_to_service(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
+        repos = _make_repos()
 
-        request = ChatRequest(message="spam spam spam spam spam", user_id=1, company_id=1)
+        request = ChatRequest(message="spam spam spam spam spam")
         with pytest.raises(BusinessError):
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos)
 
 
 # ========================
@@ -366,15 +344,13 @@ class TestChatControllerServiceDelegation:
 class TestChatControllerKnowledgeContext:
     @pytest.mark.asyncio
     async def test_fetches_documents_for_company(self):
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
+        repos = _make_repos()
 
-        request = ChatRequest(message="Quanto custa o corte?", user_id=1, company_id=1)
+        request = ChatRequest(message="Quanto custa o corte?")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, company_id=1)
 
-        knowledge_repo.get_by_company.assert_called_once_with(1)
+        repos[4].get_by_company.assert_called_once_with(1)
 
     @pytest.mark.asyncio
     async def test_passes_context_to_system_prompt(self):
@@ -387,14 +363,12 @@ class TestChatControllerKnowledgeContext:
             content="R$ 40,00",
             category=DocumentCategory.SERVICES,
         )
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
-        knowledge_repo.get_by_company.return_value = [doc]
+        repos = _make_repos()
+        repos[4].get_by_company.return_value = [doc]
 
-        request = ChatRequest(message="Quanto custa?", user_id=1, company_id=1)
+        request = ChatRequest(message="Quanto custa?")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos)
 
         system_prompt = mock_llm.call_args[0][2]
         assert "Corte masculino" in system_prompt
@@ -403,29 +377,25 @@ class TestChatControllerKnowledgeContext:
     @pytest.mark.asyncio
     async def test_empty_documents_omits_context_section(self):
         """Sem documentos, o system_prompt não contém seção de contexto."""
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
-        knowledge_repo.get_by_company.return_value = []
+        repos = _make_repos()
+        repos[4].get_by_company.return_value = []
 
-        request = ChatRequest(message="Olá", user_id=1, company_id=1)
+        request = ChatRequest(message="Olá")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos)
 
         system_prompt = mock_llm.call_args[0][2]
         assert "Use as informações abaixo" not in system_prompt
 
     @pytest.mark.asyncio
     async def test_fetches_docs_with_correct_company_id(self):
-        """Usa o company_id do request, não um valor hardcoded."""
-        conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = _make_repos()
-        user_repo.get_by_id.return_value = AsyncMock(id=7)
-        company_repo.get_by_id.return_value = _make_company(id_=5)
+        """Usa o company_id do token, não um valor hardcoded."""
+        repos = _make_repos()
+        repos[2].get_by_id.return_value = AsyncMock(id=7)
+        repos[3].get_by_id.return_value = _make_company(id_=5)
 
-        request = ChatRequest(message="Oi", user_id=7, company_id=5)
+        request = ChatRequest(message="Oi")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
-            await ChatController.send_message(
-                request, conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
-            )
+            await _call(request, *repos, user_id=7, company_id=5)
 
-        knowledge_repo.get_by_company.assert_called_once_with(5)
+        repos[4].get_by_company.assert_called_once_with(5)

@@ -11,15 +11,15 @@ from app.main import app
 # ========================
 
 class TestRateLimiting:
-    def test_within_limit_succeeds(self, client):
-        response = client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
+    def test_within_limit_succeeds(self, client, auth_headers):
+        response = client.post("/api/v1/chat", json={"message": "Ola"}, headers=auth_headers)
         assert response.status_code == 200
 
-    def test_exceeds_rate_limit(self, client):
+    def test_exceeds_rate_limit(self, client, auth_headers):
         for _ in range(10):
-            client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
+            client.post("/api/v1/chat", json={"message": "Ola"}, headers=auth_headers)
 
-        response = client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
+        response = client.post("/api/v1/chat", json={"message": "Ola"}, headers=auth_headers)
         assert response.status_code == 429
         body = response.json()
         assert body["success"] is False
@@ -38,10 +38,10 @@ class TestRateLimiting:
 # ========================
 
 class TestAuthNoKeyConfigured:
-    """Quando API_KEY não está configurada, acesso é livre."""
+    """Quando API_KEY não está configurada, rotas JWT são acessíveis com token válido."""
 
-    def test_chat_without_key_works(self, client):
-        response = client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
+    def test_chat_without_api_key_works_with_jwt(self, client, auth_headers):
+        response = client.post("/api/v1/chat", json={"message": "Ola"}, headers=auth_headers)
         assert response.status_code == 200
 
     def test_health_never_requires_key(self, client):
@@ -54,24 +54,23 @@ class TestAuthNoKeyConfigured:
 
 
 class TestAuthWithKeyConfigured:
-    """Quando API_KEY está configurada, /chat exige o header."""
+    """Quando API_KEY está configurada, rotas protegidas por require_api_key exigem o header."""
 
-    def test_chat_without_key_returns_401(self):
+    def test_conversations_without_key_returns_401(self):
         with patch.object(settings, "api_key", "test-secret-key"):
             client = TestClient(app)
-            response = client.post("/api/v1/chat", json={"message": "Ola", "user_id": 1, "company_id": 1})
+            response = client.get("/api/v1/conversations/999")
         assert response.status_code == 401
         body = response.json()
         assert body["success"] is False
         assert body["error"]["code"] == "AUTH_001"
         assert "ausente" in body["error"]["message"]
 
-    def test_chat_with_wrong_key_returns_403(self):
+    def test_conversations_with_wrong_key_returns_403(self):
         with patch.object(settings, "api_key", "test-secret-key"):
             client = TestClient(app)
-            response = client.post(
-                "/api/v1/chat",
-                json={"message": "Ola", "user_id": 1, "company_id": 1},
+            response = client.get(
+                "/api/v1/conversations/999",
                 headers={"X-API-Key": "wrong-key"},
             )
         assert response.status_code == 403
@@ -80,15 +79,14 @@ class TestAuthWithKeyConfigured:
         assert body["error"]["code"] == "AUTH_002"
         assert "inválida" in body["error"]["message"]
 
-    def test_chat_with_correct_key_returns_200(self):
+    def test_conversations_with_correct_key_passes_auth(self):
         with patch.object(settings, "api_key", "test-secret-key"):
             client = TestClient(app)
-            response = client.post(
-                "/api/v1/chat",
-                json={"message": "Ola", "user_id": 1, "company_id": 1},
+            response = client.get(
+                "/api/v1/conversations/999",
                 headers={"X-API-Key": "test-secret-key"},
             )
-        assert response.status_code == 200
+        assert response.status_code == 404  # auth passed, conversation not found
 
     def test_health_still_open(self):
         with patch.object(settings, "api_key", "test-secret-key"):

@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from app.core.rate_limiter import limiter
+from app.core.security import create_access_token
 from app.db.database import Base, get_session
 from app.main import app
 from app.models.company import Company
@@ -130,6 +131,17 @@ def mock_llm():
 @pytest.fixture
 def client():
     return TestClient(app)
+
+
+@pytest.fixture
+def chat_token():
+    """JWT para user_id=1 (company_id=1) — criado pelo setup_db global."""
+    return create_access_token({"sub": "1"})
+
+
+@pytest.fixture
+def auth_headers(chat_token):
+    return {"Authorization": f"Bearer {chat_token}"}
 
 
 @pytest_asyncio.fixture

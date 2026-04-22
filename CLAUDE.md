@@ -8,7 +8,7 @@ O sistema recebe mensagens de clientes, interpreta intenções com IA e gera res
 
 ## Estado atual
 
-**Fase: RAG + Fallback concluídos** — 460 testes automatizados. IA generativa (Groq + LangChain), prompts modulares com dados do negócio, base de conhecimento com 11 documentos seed, **pipeline RAG completo** (busca → formatação → injeção no prompt), **fallback explícito** para off-topic e informação desconhecida (orienta contato por telefone). Próximo: agendamento automático.
+**Fase: Autenticação JWT concluída** — 508 testes automatizados. IA generativa (Groq + LangChain), RAG completo, fallback off-topic, **autenticação JWT** (login por phone+password, `get_current_user`, `require_role`, `/auth/me`), `POST /chat` e `POST /conversations` migrados de API key para JWT. GET/PATCH de conversas ainda usam API key. Próximo: agendamento automático.
 
 **Fallback para respostas desconhecidas concluído:** Regras reforçadas em `_RULES` do prompt — (1) perguntas off-topic: LLM informa explicitamente que só atende assuntos da barbearia (serviços, preços, horários, agendamentos); (2) informação desconhecida: LLM orienta cliente a entrar em contato pelo telefone da barbearia (telefone real já está no prompt via `_build_business_details`, sem hardcode). Prompt-level only, zero novos models/endpoints.
 

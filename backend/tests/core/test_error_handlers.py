@@ -42,14 +42,14 @@ class TestIntegrityErrorHandler:
             orig=Exception(message),
         )
 
-    def test_fk_violation_returns_409(self, client):
+    def test_fk_violation_returns_409(self, client, auth_headers):
         with patch(
             "app.modules.chat.routes.ChatController.send_message",
             new_callable=AsyncMock,
             side_effect=self._make_integrity_error("FOREIGN KEY constraint failed"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         assert response.status_code == 409
@@ -59,7 +59,7 @@ class TestIntegrityErrorHandler:
         assert "Conflito" in body["error"]["message"]
         assert "timestamp" in body
 
-    def test_unique_violation_returns_409(self, client):
+    def test_unique_violation_returns_409(self, client, auth_headers):
         with patch(
             "app.modules.chat.routes.ChatController.send_message",
             new_callable=AsyncMock,
@@ -68,13 +68,13 @@ class TestIntegrityErrorHandler:
             ),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         assert response.status_code == 409
         assert response.json()["error"]["code"] == "DB_002"
 
-    def test_integrity_error_does_not_leak_sql(self, client):
+    def test_integrity_error_does_not_leak_sql(self, client, auth_headers):
         """Statement SQL interno NÃO deve vazar para o cliente."""
         with patch(
             "app.modules.chat.routes.ChatController.send_message",
@@ -82,7 +82,7 @@ class TestIntegrityErrorHandler:
             side_effect=self._make_integrity_error("secret_table.secret_column"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         body = response.json()
@@ -101,7 +101,7 @@ class TestOperationalErrorHandler:
             orig=Exception(message),
         )
 
-    def test_db_unavailable_returns_503(self, client):
+    def test_db_unavailable_returns_503(self, client, auth_headers):
         with patch(
             "app.modules.chat.routes.ChatController.send_message",
             new_callable=AsyncMock,
@@ -110,7 +110,7 @@ class TestOperationalErrorHandler:
             ),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         assert response.status_code == 503
@@ -120,20 +120,20 @@ class TestOperationalErrorHandler:
         assert "indisponível" in body["error"]["message"]
         assert "timestamp" in body
 
-    def test_db_timeout_returns_503(self, client):
+    def test_db_timeout_returns_503(self, client, auth_headers):
         with patch(
             "app.modules.chat.routes.ChatController.send_message",
             new_callable=AsyncMock,
             side_effect=self._make_operational_error("connection timed out"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         assert response.status_code == 503
         assert response.json()["error"]["code"] == "DB_003"
 
-    def test_operational_error_does_not_leak_details(self, client):
+    def test_operational_error_does_not_leak_details(self, client, auth_headers):
         with patch(
             "app.modules.chat.routes.ChatController.send_message",
             new_callable=AsyncMock,
@@ -142,7 +142,7 @@ class TestOperationalErrorHandler:
             ),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         body = response.json()
@@ -154,14 +154,14 @@ class TestOperationalErrorHandler:
 # ========================
 
 class TestSQLAlchemyErrorHandler:
-    def test_generic_db_error_returns_500(self, client):
+    def test_generic_db_error_returns_500(self, client, auth_headers):
         with patch(
             "app.modules.chat.routes.ChatController.send_message",
             new_callable=AsyncMock,
             side_effect=SQLAlchemyError("unexpected internal error"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         assert response.status_code == 500
@@ -171,7 +171,7 @@ class TestSQLAlchemyErrorHandler:
         assert "banco de dados" in body["error"]["message"]
         assert "timestamp" in body
 
-    def test_generic_db_error_does_not_leak_details(self, client):
+    def test_generic_db_error_does_not_leak_details(self, client, auth_headers):
         """Mensagem interna do banco NÃO deve vazar para o cliente."""
         with patch(
             "app.modules.chat.routes.ChatController.send_message",
@@ -179,7 +179,7 @@ class TestSQLAlchemyErrorHandler:
             side_effect=SQLAlchemyError("secret internal state xyz"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         body = response.json()
@@ -192,13 +192,13 @@ class TestSQLAlchemyErrorHandler:
 # ========================
 
 class TestErrorHandlerMiddleware:
-    def test_unexpected_error_returns_500(self, client):
+    def test_unexpected_error_returns_500(self, client, auth_headers):
         with patch(
             "app.modules.chat.controller.generate_response",
             side_effect=RuntimeError("bug inesperado"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         assert response.status_code == 500
@@ -207,27 +207,27 @@ class TestErrorHandlerMiddleware:
         assert body["error"]["code"] == "APP_000"
         assert body["error"]["message"] == "Internal Server Error"
 
-    def test_unexpected_error_does_not_leak_details(self, client):
+    def test_unexpected_error_does_not_leak_details(self, client, auth_headers):
         """Mensagem interna NÃO deve vazar para o cliente."""
         with patch(
             "app.modules.chat.controller.generate_response",
             side_effect=RuntimeError("segredo interno do sistema"),
         ):
             response = client.post(
-                "/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1}
+                "/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers
             )
 
         body = response.json()
         assert "segredo" not in str(body)
 
-    def test_unexpected_error_logs_stack_trace(self, client, caplog):
+    def test_unexpected_error_logs_stack_trace(self, client, auth_headers, caplog):
         import logging
 
         with caplog.at_level(logging.ERROR), patch(
             "app.modules.chat.controller.generate_response",
             side_effect=RuntimeError("erro para logar"),
         ):
-            client.post("/api/v1/chat", json={"message": "Quero agendar", "user_id": 1, "company_id": 1})
+            client.post("/api/v1/chat", json={"message": "Quero agendar"}, headers=auth_headers)
 
         error_logs = [r for r in caplog.records if r.levelno >= logging.ERROR]
         assert len(error_logs) >= 1
@@ -244,20 +244,20 @@ class TestErrorResponseFormat:
     @pytest.mark.parametrize(
         "method, path, json_body, expected_fields",
         [
-            ("POST", "/api/v1/chat", {"message": "", "user_id": 1, "company_id": 1}, ["success", "error", "timestamp"]),
+            ("POST", "/api/v1/chat", {"message": ""}, ["success", "error", "timestamp"]),
             ("GET", "/rota/inexistente", None, ["success", "error", "timestamp"]),
             (
                 "POST",
                 "/api/v1/chat",
-                {"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
+                {"message": "spam spam spam spam spam"},
                 ["success", "error", "timestamp"],
             ),
         ],
     )
     def test_all_errors_have_standard_envelope(
-        self, client, method, path, json_body, expected_fields
+        self, client, auth_headers, method, path, json_body, expected_fields
     ):
-        response = client.request(method, path, json=json_body)
+        response = client.request(method, path, json=json_body, headers=auth_headers if method == "POST" else None)
         body = response.json()
         for field in expected_fields:
             assert field in body, f"Campo '{field}' ausente na resposta"

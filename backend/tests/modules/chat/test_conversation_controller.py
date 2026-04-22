@@ -4,7 +4,6 @@ import pytest
 
 from app.core.exceptions import BusinessError, NotFoundError
 from app.modules.chat.controller import ConversationController
-from app.modules.chat.schemas import CreateConversationRequest
 from app.schemas.base_schema import SuccessResponse
 
 
@@ -44,9 +43,9 @@ class TestConversationControllerCreate:
         conv = _make_conversation(id_=10, user_id=1, company_id=1)
         conv_repo, user_repo, company_repo = _make_repos(conv)
 
-        request = CreateConversationRequest(user_id=1, company_id=1)
         response = await ConversationController.create(
-            request, conv_repo, user_repo, company_repo
+            user_id=1, company_id=1,
+            conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
         )
 
         conv_repo.create.assert_called_once_with(user_id=1, company_id=1)
@@ -56,9 +55,9 @@ class TestConversationControllerCreate:
     async def test_returns_success_response(self):
         conv_repo, user_repo, company_repo = _make_repos()
 
-        request = CreateConversationRequest(user_id=1, company_id=1)
         response = await ConversationController.create(
-            request, conv_repo, user_repo, company_repo
+            user_id=1, company_id=1,
+            conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
         )
 
         assert isinstance(response, SuccessResponse)
@@ -69,9 +68,9 @@ class TestConversationControllerCreate:
         conv = _make_conversation(id_=5, user_id=1, company_id=1)
         conv_repo, user_repo, company_repo = _make_repos(conv)
 
-        request = CreateConversationRequest(user_id=1, company_id=1)
         response = await ConversationController.create(
-            request, conv_repo, user_repo, company_repo
+            user_id=1, company_id=1,
+            conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
         )
 
         data = response.data
@@ -88,9 +87,9 @@ class TestConversationControllerCreate:
         user_repo.get_by_id.return_value = AsyncMock(id=7)
         company_repo.get_by_id.return_value = AsyncMock(id=3)
 
-        request = CreateConversationRequest(user_id=7, company_id=3)
         await ConversationController.create(
-            request, conv_repo, user_repo, company_repo
+            user_id=7, company_id=3,
+            conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
         )
 
         conv_repo.create.assert_called_once_with(user_id=7, company_id=3)
@@ -107,11 +106,10 @@ class TestConversationControllerNotFound:
         conv_repo, user_repo, company_repo = _make_repos()
         user_repo.get_by_id.return_value = None
 
-        request = CreateConversationRequest(user_id=999, company_id=1)
-
         with pytest.raises(NotFoundError) as exc_info:
             await ConversationController.create(
-                request, conv_repo, user_repo, company_repo
+                user_id=999, company_id=1,
+                conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
             )
 
         assert "999" in exc_info.value.message
@@ -122,11 +120,10 @@ class TestConversationControllerNotFound:
         conv_repo, user_repo, company_repo = _make_repos()
         company_repo.get_by_id.return_value = None
 
-        request = CreateConversationRequest(user_id=1, company_id=888)
-
         with pytest.raises(NotFoundError) as exc_info:
             await ConversationController.create(
-                request, conv_repo, user_repo, company_repo
+                user_id=1, company_id=888,
+                conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
             )
 
         assert "888" in exc_info.value.message
@@ -138,11 +135,10 @@ class TestConversationControllerNotFound:
         conv_repo, user_repo, company_repo = _make_repos()
         user_repo.get_by_id.return_value = None
 
-        request = CreateConversationRequest(user_id=999, company_id=1)
-
         with pytest.raises(NotFoundError):
             await ConversationController.create(
-                request, conv_repo, user_repo, company_repo
+                user_id=999, company_id=1,
+                conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
             )
 
         company_repo.get_by_id.assert_not_called()

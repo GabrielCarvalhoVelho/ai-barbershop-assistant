@@ -356,11 +356,13 @@ class TestControllerErrorPropagation:
         mock_knowledge_repo = AsyncMock()
         mock_knowledge_repo.get_by_company.return_value = []
 
-        request = ChatRequest(message="Quero agendar", user_id=1, company_id=1)
+        request = ChatRequest(message="Quero agendar")
         with pytest.raises(ConflictError):
             await ChatController.send_message(
-                request, mock_conv_repo, mock_msg_repo,
-                mock_user_repo, mock_company_repo, mock_knowledge_repo,
+                request, user_id=1, company_id=1,
+                conversation_repo=mock_conv_repo, message_repo=mock_msg_repo,
+                user_repo=mock_user_repo, company_repo=mock_company_repo,
+                knowledge_repo=mock_knowledge_repo,
             )
 
     @pytest.mark.asyncio
@@ -381,11 +383,13 @@ class TestControllerErrorPropagation:
         mock_knowledge_repo = AsyncMock()
         mock_knowledge_repo.get_by_company.return_value = []
 
-        request = ChatRequest(message="Quero agendar", user_id=1, company_id=1)
+        request = ChatRequest(message="Quero agendar")
         with pytest.raises(ServiceUnavailableError):
             await ChatController.send_message(
-                request, mock_conv_repo, mock_msg_repo,
-                mock_user_repo, mock_company_repo, mock_knowledge_repo,
+                request, user_id=1, company_id=1,
+                conversation_repo=mock_conv_repo, message_repo=mock_msg_repo,
+                user_repo=mock_user_repo, company_repo=mock_company_repo,
+                knowledge_repo=mock_knowledge_repo,
             )
 
 
@@ -394,35 +398,39 @@ class TestControllerErrorPropagation:
 # ========================
 
 class TestValidationFieldName:
-    def test_empty_message_includes_field_in_details(self, client):
+    def test_empty_message_includes_field_in_details(self, client, auth_headers):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "", "user_id": 1, "company_id": 1},
+            json={"message": ""},
+            headers=auth_headers,
         )
         body = response.json()
         assert body["error"]["field"] == "message"
 
-    def test_missing_field_includes_field_name(self, client):
+    def test_missing_field_includes_field_name(self, client, auth_headers):
         response = client.post(
             "/api/v1/chat",
-            json={"user_id": 1, "company_id": 1},
+            json={},
+            headers=auth_headers,
         )
         body = response.json()
         assert body["error"]["field"] == "message"
 
-    def test_details_include_field_prefix(self, client):
+    def test_details_include_field_prefix(self, client, auth_headers):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "!!!", "user_id": 1, "company_id": 1},
+            json={"message": "!!!"},
+            headers=auth_headers,
         )
         details = response.json()["error"]["details"]
         assert any("message:" in d for d in details)
 
-    def test_field_is_absent_on_non_validation_errors(self, client):
+    def test_field_is_absent_on_non_validation_errors(self, client, auth_headers):
         """Erros não-validação não devem ter campo field."""
         response = client.post(
             "/api/v1/chat",
-            json={"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
+            json={"message": "spam spam spam spam spam"},
+            headers=auth_headers,
         )
         body = response.json()
         assert "field" not in body.get("error", {})

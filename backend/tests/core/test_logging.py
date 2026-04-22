@@ -31,26 +31,29 @@ class TestRequestIDMiddleware:
         assert len(rid) == 32
         assert rid.isalnum()
 
-    def test_request_id_present_on_success(self, client):
+    def test_request_id_present_on_success(self, client, auth_headers):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "Ola", "user_id": 1, "company_id": 1},
+            json={"message": "Ola"},
+            headers=auth_headers,
         )
         assert response.status_code == 200
         assert REQUEST_ID_HEADER in response.headers
 
-    def test_request_id_present_on_error_422(self, client):
+    def test_request_id_present_on_error_422(self, client, auth_headers):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "", "user_id": 1, "company_id": 1},
+            json={"message": ""},
+            headers=auth_headers,
         )
         assert response.status_code == 422
         assert REQUEST_ID_HEADER in response.headers
 
-    def test_request_id_present_on_error_400(self, client):
+    def test_request_id_present_on_error_400(self, client, auth_headers):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
+            json={"message": "spam spam spam spam spam"},
+            headers=auth_headers,
         )
         assert response.status_code == 400
         assert REQUEST_ID_HEADER in response.headers
@@ -61,38 +64,42 @@ class TestRequestIDMiddleware:
 # ========================
 
 class TestRequestIDInErrorBody:
-    def test_error_422_body_has_request_id(self, client):
+    def test_error_422_body_has_request_id(self, client, auth_headers):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "", "user_id": 1, "company_id": 1},
+            json={"message": ""},
+            headers=auth_headers,
         )
         body = response.json()
         assert "request_id" in body
 
-    def test_error_400_body_has_request_id(self, client):
+    def test_error_400_body_has_request_id(self, client, auth_headers):
         response = client.post(
             "/api/v1/chat",
-            json={"message": "spam spam spam spam spam", "user_id": 1, "company_id": 1},
+            json={"message": "spam spam spam spam spam"},
+            headers=auth_headers,
         )
         body = response.json()
         assert "request_id" in body
 
-    def test_error_request_id_matches_header(self, client):
+    def test_error_request_id_matches_header(self, client, auth_headers):
         """request_id no body do erro deve ser igual ao header da response."""
         response = client.post(
             "/api/v1/chat",
-            json={"message": "", "user_id": 1, "company_id": 1},
+            json={"message": ""},
+            headers=auth_headers,
         )
         body = response.json()
         header_rid = response.headers[REQUEST_ID_HEADER]
         assert body["request_id"] == header_rid
         assert len(header_rid) == 32
 
-    def test_success_response_has_no_request_id_in_body(self, client):
+    def test_success_response_has_no_request_id_in_body(self, client, auth_headers):
         """Sucesso não precisa de request_id no body — só no header."""
         response = client.post(
             "/api/v1/chat",
-            json={"message": "Ola", "user_id": 1, "company_id": 1},
+            json={"message": "Ola"},
+            headers=auth_headers,
         )
         body = response.json()
         assert "request_id" not in body
