@@ -7,7 +7,7 @@ from app.db.database import get_session
 from app.models.user import User
 from app.modules.chat.controller import ChatController
 from app.modules.chat.repository import ConversationRepository, MessageRepository
-from app.repositories import CompanyRepository, KnowledgeDocumentRepository, UserRepository
+from app.repositories import CompanyRepository, KnowledgeDocumentRepository
 from app.modules.chat.schemas import ChatRequest
 from app.schemas.base_schema import SuccessResponse
 from app.schemas.error_schema import ErrorResponse
@@ -66,16 +66,13 @@ async def chat(
 ):
     conversation_repo = ConversationRepository(session)
     message_repo = MessageRepository(session)
-    user_repo = UserRepository(session)
     company_repo = CompanyRepository(session)
     knowledge_repo = KnowledgeDocumentRepository(session)
     return await ChatController.send_message(
         body,
-        user_id=current_user.id,
-        company_id=current_user.company_id,
+        current_user=current_user,
         conversation_repo=conversation_repo,
         message_repo=message_repo,
-        user_repo=user_repo,
         company_repo=company_repo,
         knowledge_repo=knowledge_repo,
     )

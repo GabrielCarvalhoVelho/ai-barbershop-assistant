@@ -35,10 +35,16 @@ def _make_company(id_: int = 1, name: str = "Barbearia Teste", phone: str | None
     return company
 
 
+def _make_user(id_: int = 1, company_id: int = 1):
+    user = AsyncMock()
+    user.id = id_
+    user.company_id = company_id
+    return user
+
+
 def _make_repos(conversation=None):
     conv_repo = AsyncMock()
     msg_repo = AsyncMock()
-    user_repo = AsyncMock()
     company_repo = AsyncMock()
     knowledge_repo = AsyncMock()
 
@@ -46,22 +52,19 @@ def _make_repos(conversation=None):
     conv_repo.get_by_id.return_value = conversation
     msg_repo.save_pair.return_value = (_make_message(id_=1), _make_message(id_=2))
     msg_repo.get_by_conversation.return_value = []
-    user_repo.get_by_id.return_value = AsyncMock(id=1)
     company_repo.get_by_id.return_value = _make_company()
     knowledge_repo.get_by_company.return_value = []
 
-    return conv_repo, msg_repo, user_repo, company_repo, knowledge_repo
+    return conv_repo, msg_repo, company_repo, knowledge_repo
 
 
 def _call(request, *repos, user_id=1, company_id=1):
-    conv_repo, msg_repo, user_repo, company_repo, knowledge_repo = repos
+    conv_repo, msg_repo, company_repo, knowledge_repo = repos
     return ChatController.send_message(
         request,
-        user_id=user_id,
-        company_id=company_id,
+        current_user=_make_user(id_=user_id, company_id=company_id),
         conversation_repo=conv_repo,
         message_repo=msg_repo,
-        user_repo=user_repo,
         company_repo=company_repo,
         knowledge_repo=knowledge_repo,
     )
@@ -88,8 +91,7 @@ class TestChatControllerNewConversation:
     @pytest.mark.asyncio
     async def test_passes_user_and_company_to_create(self):
         repos = _make_repos()
-        conv_repo, _, user_repo, company_repo, _ = repos
-        user_repo.get_by_id.return_value = AsyncMock(id=7)
+        conv_repo, _, company_repo, _ = repos
         company_repo.get_by_id.return_value = _make_company(id_=3)
 
         request = ChatRequest(message="Oi")
@@ -193,28 +195,15 @@ class TestChatControllerExistingConversation:
 
 
 # ========================
-# Validação de user e company
+# Validação de company
 # ========================
 
 
-class TestChatControllerUserCompanyValidation:
-    @pytest.mark.asyncio
-    async def test_user_not_found_raises_404(self):
-        repos = _make_repos()
-        repos[2].get_by_id.return_value = None
-
-        request = ChatRequest(message="Oi")
-
-        with pytest.raises(NotFoundError) as exc_info:
-            await _call(request, *repos, user_id=999, company_id=1)
-
-        assert "999" in exc_info.value.message
-        repos[0].create.assert_not_called()
-
+class TestChatControllerCompanyValidation:
     @pytest.mark.asyncio
     async def test_company_not_found_raises_404(self):
         repos = _make_repos()
-        repos[3].get_by_id.return_value = None
+        repos[2].get_by_id.return_value = None
 
         request = ChatRequest(message="Oi")
 
@@ -223,19 +212,6 @@ class TestChatControllerUserCompanyValidation:
 
         assert "888" in exc_info.value.message
         repos[0].create.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_validates_user_before_company(self):
-        """Se user não existe, nem checa company."""
-        repos = _make_repos()
-        repos[2].get_by_id.return_value = None
-
-        request = ChatRequest(message="Oi")
-
-        with pytest.raises(NotFoundError):
-            await _call(request, *repos, user_id=999, company_id=1)
-
-        repos[3].get_by_id.assert_not_called()
 
 
 # ========================
@@ -248,8 +224,6 @@ class TestChatControllerConversationOwnership:
     async def test_wrong_user_id_raises_403(self):
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
         repos = _make_repos(conv)
-        repos[2].get_by_id.return_value = AsyncMock(id=99)
-        repos[3].get_by_id.return_value = _make_company(id_=1)
 
         request = ChatRequest(message="Oi", conversation_id=42)
 
@@ -263,8 +237,6 @@ class TestChatControllerConversationOwnership:
     async def test_wrong_company_id_raises_403(self):
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
         repos = _make_repos(conv)
-        repos[2].get_by_id.return_value = AsyncMock(id=1)
-        repos[3].get_by_id.return_value = _make_company(id_=99)
 
         request = ChatRequest(message="Oi", conversation_id=42)
 
@@ -278,8 +250,6 @@ class TestChatControllerConversationOwnership:
     async def test_wrong_user_and_company_raises_403(self):
         conv = _make_conversation(id_=42, user_id=1, company_id=1)
         repos = _make_repos(conv)
-        repos[2].get_by_id.return_value = AsyncMock(id=50)
-        repos[3].get_by_id.return_value = _make_company(id_=60)
 
         request = ChatRequest(message="Oi", conversation_id=42)
 
@@ -302,8 +272,6 @@ class TestChatControllerConversationOwnership:
         """Se a conversa não pertence ao user, retorna 403 mesmo que esteja closed."""
         conv = _make_conversation(id_=42, status="closed", user_id=1, company_id=1)
         repos = _make_repos(conv)
-        repos[2].get_by_id.return_value = AsyncMock(id=99)
-        repos[3].get_by_id.return_value = _make_company(id_=1)
 
         request = ChatRequest(message="Oi", conversation_id=42)
 
@@ -350,7 +318,7 @@ class TestChatControllerKnowledgeContext:
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
             await _call(request, *repos, company_id=1)
 
-        repos[4].get_by_company.assert_called_once_with(1)
+        repos[3].get_by_company.assert_called_once_with(1)
 
     @pytest.mark.asyncio
     async def test_passes_context_to_system_prompt(self):
@@ -364,7 +332,7 @@ class TestChatControllerKnowledgeContext:
             category=DocumentCategory.SERVICES,
         )
         repos = _make_repos()
-        repos[4].get_by_company.return_value = [doc]
+        repos[3].get_by_company.return_value = [doc]
 
         request = ChatRequest(message="Quanto custa?")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
@@ -378,7 +346,7 @@ class TestChatControllerKnowledgeContext:
     async def test_empty_documents_omits_context_section(self):
         """Sem documentos, o system_prompt não contém seção de contexto."""
         repos = _make_repos()
-        repos[4].get_by_company.return_value = []
+        repos[3].get_by_company.return_value = []
 
         request = ChatRequest(message="Olá")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)) as mock_llm:
@@ -391,11 +359,10 @@ class TestChatControllerKnowledgeContext:
     async def test_fetches_docs_with_correct_company_id(self):
         """Usa o company_id do token, não um valor hardcoded."""
         repos = _make_repos()
-        repos[2].get_by_id.return_value = AsyncMock(id=7)
-        repos[3].get_by_id.return_value = _make_company(id_=5)
+        repos[2].get_by_id.return_value = _make_company(id_=5)
 
         request = ChatRequest(message="Oi")
         with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
             await _call(request, *repos, user_id=7, company_id=5)
 
-        repos[4].get_by_company.assert_called_once_with(5)
+        repos[3].get_by_company.assert_called_once_with(5)

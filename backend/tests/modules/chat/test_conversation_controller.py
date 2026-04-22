@@ -20,16 +20,21 @@ def _make_conversation(id_: int = 1, user_id: int = 1, company_id: int = 1):
     return conv
 
 
+def _make_user(id_: int = 1, company_id: int = 1):
+    user = AsyncMock()
+    user.id = id_
+    user.company_id = company_id
+    return user
+
+
 def _make_repos(conversation=None):
     conv_repo = AsyncMock()
-    user_repo = AsyncMock()
     company_repo = AsyncMock()
 
     conv_repo.create.return_value = conversation or _make_conversation()
-    user_repo.get_by_id.return_value = AsyncMock(id=1)
     company_repo.get_by_id.return_value = AsyncMock(id=1)
 
-    return conv_repo, user_repo, company_repo
+    return conv_repo, company_repo
 
 
 # ========================
@@ -41,11 +46,11 @@ class TestConversationControllerCreate:
     @pytest.mark.asyncio
     async def test_creates_conversation(self):
         conv = _make_conversation(id_=10, user_id=1, company_id=1)
-        conv_repo, user_repo, company_repo = _make_repos(conv)
+        conv_repo, company_repo = _make_repos(conv)
 
         response = await ConversationController.create(
-            user_id=1, company_id=1,
-            conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
+            current_user=_make_user(id_=1, company_id=1),
+            conversation_repo=conv_repo, company_repo=company_repo,
         )
 
         conv_repo.create.assert_called_once_with(user_id=1, company_id=1)
@@ -53,11 +58,11 @@ class TestConversationControllerCreate:
 
     @pytest.mark.asyncio
     async def test_returns_success_response(self):
-        conv_repo, user_repo, company_repo = _make_repos()
+        conv_repo, company_repo = _make_repos()
 
         response = await ConversationController.create(
-            user_id=1, company_id=1,
-            conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
+            current_user=_make_user(),
+            conversation_repo=conv_repo, company_repo=company_repo,
         )
 
         assert isinstance(response, SuccessResponse)
@@ -66,11 +71,11 @@ class TestConversationControllerCreate:
     @pytest.mark.asyncio
     async def test_data_contains_all_fields(self):
         conv = _make_conversation(id_=5, user_id=1, company_id=1)
-        conv_repo, user_repo, company_repo = _make_repos(conv)
+        conv_repo, company_repo = _make_repos(conv)
 
         response = await ConversationController.create(
-            user_id=1, company_id=1,
-            conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
+            current_user=_make_user(id_=1, company_id=1),
+            conversation_repo=conv_repo, company_repo=company_repo,
         )
 
         data = response.data
@@ -83,13 +88,11 @@ class TestConversationControllerCreate:
 
     @pytest.mark.asyncio
     async def test_passes_correct_ids_to_repo(self):
-        conv_repo, user_repo, company_repo = _make_repos()
-        user_repo.get_by_id.return_value = AsyncMock(id=7)
-        company_repo.get_by_id.return_value = AsyncMock(id=3)
+        conv_repo, company_repo = _make_repos()
 
         await ConversationController.create(
-            user_id=7, company_id=3,
-            conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
+            current_user=_make_user(id_=7, company_id=3),
+            conversation_repo=conv_repo, company_repo=company_repo,
         )
 
         conv_repo.create.assert_called_once_with(user_id=7, company_id=3)
@@ -102,46 +105,18 @@ class TestConversationControllerCreate:
 
 class TestConversationControllerNotFound:
     @pytest.mark.asyncio
-    async def test_user_not_found_raises_404(self):
-        conv_repo, user_repo, company_repo = _make_repos()
-        user_repo.get_by_id.return_value = None
-
-        with pytest.raises(NotFoundError) as exc_info:
-            await ConversationController.create(
-                user_id=999, company_id=1,
-                conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
-            )
-
-        assert "999" in exc_info.value.message
-        conv_repo.create.assert_not_called()
-
-    @pytest.mark.asyncio
     async def test_company_not_found_raises_404(self):
-        conv_repo, user_repo, company_repo = _make_repos()
+        conv_repo, company_repo = _make_repos()
         company_repo.get_by_id.return_value = None
 
         with pytest.raises(NotFoundError) as exc_info:
             await ConversationController.create(
-                user_id=1, company_id=888,
-                conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
+                current_user=_make_user(id_=1, company_id=888),
+                conversation_repo=conv_repo, company_repo=company_repo,
             )
 
         assert "888" in exc_info.value.message
         conv_repo.create.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_validates_user_before_company(self):
-        """Se user não existe, nem checa company."""
-        conv_repo, user_repo, company_repo = _make_repos()
-        user_repo.get_by_id.return_value = None
-
-        with pytest.raises(NotFoundError):
-            await ConversationController.create(
-                user_id=999, company_id=1,
-                conversation_repo=conv_repo, user_repo=user_repo, company_repo=company_repo,
-            )
-
-        company_repo.get_by_id.assert_not_called()
 
 
 # ========================

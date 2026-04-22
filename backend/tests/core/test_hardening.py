@@ -343,14 +343,15 @@ class TestControllerErrorPropagation:
         from app.modules.chat.controller import ChatController
         from app.modules.chat.schemas import ChatRequest
 
+        mock_user = AsyncMock()
+        mock_user.id = 1
+        mock_user.company_id = 1
         mock_conv_repo = AsyncMock()
         mock_conv_repo.create.return_value = AsyncMock(id=1)
         mock_msg_repo = AsyncMock()
         mock_msg_repo.save_pair.side_effect = ConflictError(
             message="FK violation",
         )
-        mock_user_repo = AsyncMock()
-        mock_user_repo.get_by_id.return_value = AsyncMock(id=1)
         mock_company_repo = AsyncMock()
         mock_company_repo.get_by_id.return_value = AsyncMock(id=1)
         mock_knowledge_repo = AsyncMock()
@@ -359,9 +360,9 @@ class TestControllerErrorPropagation:
         request = ChatRequest(message="Quero agendar")
         with pytest.raises(ConflictError):
             await ChatController.send_message(
-                request, user_id=1, company_id=1,
+                request, current_user=mock_user,
                 conversation_repo=mock_conv_repo, message_repo=mock_msg_repo,
-                user_repo=mock_user_repo, company_repo=mock_company_repo,
+                company_repo=mock_company_repo,
                 knowledge_repo=mock_knowledge_repo,
             )
 
@@ -370,14 +371,15 @@ class TestControllerErrorPropagation:
         from app.modules.chat.controller import ChatController
         from app.modules.chat.schemas import ChatRequest
 
+        mock_user = AsyncMock()
+        mock_user.id = 1
+        mock_user.company_id = 1
         mock_conv_repo = AsyncMock()
         mock_conv_repo.create.return_value = AsyncMock(id=1)
         mock_msg_repo = AsyncMock()
         mock_msg_repo.save_pair.side_effect = ServiceUnavailableError(
             message="DB down",
         )
-        mock_user_repo = AsyncMock()
-        mock_user_repo.get_by_id.return_value = AsyncMock(id=1)
         mock_company_repo = AsyncMock()
         mock_company_repo.get_by_id.return_value = AsyncMock(id=1)
         mock_knowledge_repo = AsyncMock()
@@ -386,9 +388,9 @@ class TestControllerErrorPropagation:
         request = ChatRequest(message="Quero agendar")
         with pytest.raises(ServiceUnavailableError):
             await ChatController.send_message(
-                request, user_id=1, company_id=1,
+                request, current_user=mock_user,
                 conversation_repo=mock_conv_repo, message_repo=mock_msg_repo,
-                user_repo=mock_user_repo, company_repo=mock_company_repo,
+                company_repo=mock_company_repo,
                 knowledge_repo=mock_knowledge_repo,
             )
 
