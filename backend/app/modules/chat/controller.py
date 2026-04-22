@@ -1,7 +1,7 @@
 from app.core.exceptions import AppError, AuthorizationError, BusinessError, NotFoundError
 from app.core.logger import get_logger
 from app.core.config import settings
-from app.models.enums import ConversationStatus
+from app.models.enums import ConversationStatus, UserRole
 from app.models.user import User
 from app.modules.ai.context_service import format_knowledge_context
 from app.modules.ai.prompts import BusinessInfo
@@ -161,6 +161,7 @@ class ConversationController:
     @staticmethod
     async def get_by_id(
         conversation_id: int,
+        current_user: User,
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
     ) -> SuccessResponse:
@@ -170,6 +171,11 @@ class ConversationController:
         if conversation is None:
             raise NotFoundError(
                 message=f"Conversa {conversation_id} não encontrada.",
+            )
+
+        if current_user.role != UserRole.ADMIN and conversation.user_id != current_user.id:
+            raise AuthorizationError(
+                message=f"Conversa {conversation_id} não pertence ao usuário informado.",
             )
 
         message_count = await message_repo.count_by_conversation(conversation_id)
@@ -195,6 +201,7 @@ class ConversationController:
     @staticmethod
     async def get_messages(
         conversation_id: int,
+        current_user: User,
         limit: int,
         offset: int,
         conversation_repo: ConversationRepository,
@@ -211,6 +218,11 @@ class ConversationController:
         if conversation is None:
             raise NotFoundError(
                 message=f"Conversa {conversation_id} não encontrada.",
+            )
+
+        if current_user.role != UserRole.ADMIN and conversation.user_id != current_user.id:
+            raise AuthorizationError(
+                message=f"Conversa {conversation_id} não pertence ao usuário informado.",
             )
 
         messages = await message_repo.get_by_conversation(
@@ -248,6 +260,7 @@ class ConversationController:
     @staticmethod
     async def close(
         conversation_id: int,
+        current_user: User,
         conversation_repo: ConversationRepository,
     ) -> SuccessResponse:
         logger.info("Encerrando conversa: id=%s", conversation_id)
@@ -256,6 +269,11 @@ class ConversationController:
         if conversation is None:
             raise NotFoundError(
                 message=f"Conversa {conversation_id} não encontrada.",
+            )
+
+        if current_user.role != UserRole.ADMIN and conversation.user_id != current_user.id:
+            raise AuthorizationError(
+                message=f"Conversa {conversation_id} não pertence ao usuário informado.",
             )
 
         if conversation.status == ConversationStatus.CLOSED:

@@ -2,7 +2,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from app.core.exceptions import BusinessError, NotFoundError
+from app.core.exceptions import AuthorizationError, BusinessError, NotFoundError
+from app.models.enums import UserRole
 from app.modules.chat.controller import ConversationController
 from app.schemas.base_schema import SuccessResponse
 
@@ -134,7 +135,7 @@ class TestConversationControllerGetById:
         msg_repo.count_by_conversation.return_value = 5
 
         response = await ConversationController.get_by_id(
-            10, conv_repo, msg_repo
+            10, current_user=_make_user(id_=1), conversation_repo=conv_repo, message_repo=msg_repo
         )
 
         conv_repo.get_by_id.assert_called_once_with(10)
@@ -150,7 +151,7 @@ class TestConversationControllerGetById:
         msg_repo.count_by_conversation.return_value = 8
 
         response = await ConversationController.get_by_id(
-            3, conv_repo, msg_repo
+            3, current_user=_make_user(id_=2), conversation_repo=conv_repo, message_repo=msg_repo
         )
 
         data = response.data
@@ -171,7 +172,7 @@ class TestConversationControllerGetById:
         msg_repo.count_by_conversation.return_value = 42
 
         response = await ConversationController.get_by_id(
-            1, conv_repo, msg_repo
+            1, current_user=_make_user(), conversation_repo=conv_repo, message_repo=msg_repo
         )
 
         msg_repo.count_by_conversation.assert_called_once_with(1)
@@ -186,7 +187,7 @@ class TestConversationControllerGetById:
         msg_repo.count_by_conversation.return_value = 0
 
         response = await ConversationController.get_by_id(
-            1, conv_repo, msg_repo
+            1, current_user=_make_user(), conversation_repo=conv_repo, message_repo=msg_repo
         )
 
         assert response.data["message_count"] == 0
@@ -203,7 +204,7 @@ class TestConversationControllerGetById:
         msg_repo.count_by_conversation.return_value = 3
 
         response = await ConversationController.get_by_id(
-            1, conv_repo, msg_repo
+            1, current_user=_make_user(), conversation_repo=conv_repo, message_repo=msg_repo
         )
 
         assert response.data["ended_at"] is not None
