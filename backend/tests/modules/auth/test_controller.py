@@ -42,7 +42,7 @@ class TestAuthController:
     async def test_login_bad_credentials_propagates(self):
         repo = AsyncMock()
         repo.get_by_phone.return_value = None
-        request = LoginRequest(phone="+5599000000000", password="pass")
+        request = LoginRequest(phone="+5599000000000", password="pass123")
 
         with pytest.raises(AuthenticationError):
             await AuthController.login(request, repo)

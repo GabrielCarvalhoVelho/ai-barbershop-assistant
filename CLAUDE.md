@@ -4,7 +4,7 @@ TCC — backend de atendimento automatizado para barbearias via IA generativa (F
 
 ## Estado atual
 
-**508 testes.** JWT concluído (`POST /chat` e `POST /conversations` usam JWT; GET/PATCH de conversas ainda usam API key). Próximo: agendamento automático de horários.
+**525 testes.** JWT concluído em todos os endpoints de chat e conversas — todas as 5 rotas usam `get_current_user`. Login hardened com rate limiting, validações corretas e LGPD compliance. Próximo: agendamento automático de horários.
 
 ## Como rodar
 
@@ -36,5 +36,13 @@ Bancos: SQLite in-memory (testes), PostgreSQL local (dev, banco `barbershop`), S
 - `os.environ.setdefault("DEBUG", "true")` no topo do `conftest.py` — necessário para o validator de Settings não exigir API key nos testes
 - Unit of Work: repositories usam `flush()`, nunca `commit()`. O `get_session()` faz commit/rollback
 - Validações de prod em `Settings`: CORS wildcard e API keys obrigatórias quando `DEBUG=false`
-- Logs nunca incluem conteúdo de mensagens (LGPD)
+- Logs nunca incluem conteúdo de mensagens nem dados sensíveis (LGPD): phone, email, passwords nunca são logados
 - Request ID sempre gerado server-side (ignora header do cliente — previne log injection)
+
+## Segurança de Autenticação
+
+- **Login (`POST /api/v1/auth/login`):** Rate limit 5/minute (contra brute force), validação de telefone (10-20 chars), password (6+ chars)
+- **JWT:** HS256, expira em 30 minutos, sempre validado em endpoints protegidos
+- **Password hashing:** bcrypt (timing-attack safe), nunca armazenado em plaintext
+- **Error messages:** Genéricas ("Credenciais inválidas") — mesmo erro para usuário não encontrado ou senha errada (previne user enumeration)
+- **DB indexes:** phone e email têm índices únicos (UNIQUE constraint auto-cria B-tree em PostgreSQL)
