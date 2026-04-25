@@ -35,6 +35,17 @@ class TestCreateConversationSuccess:
 
 
 # ========================
+# GET /conversations/{id} — autenticação
+# ========================
+
+
+class TestGetConversationAuth:
+    def test_no_token_returns_401(self, client):
+        response = client.get("/api/v1/conversations/1")
+        assert response.status_code == 401
+
+
+# ========================
 # GET /conversations/{id} — sucesso
 # ========================
 
@@ -44,7 +55,7 @@ class TestGetConversationSuccess:
         create = client.post("/api/v1/conversations", headers=auth_headers)
         conv_id = create.json()["data"]["id"]
 
-        response = client.get(f"/api/v1/conversations/{conv_id}")
+        response = client.get(f"/api/v1/conversations/{conv_id}", headers=auth_headers)
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
@@ -60,7 +71,7 @@ class TestGetConversationSuccess:
         create = client.post("/api/v1/conversations", headers=auth_headers)
         conv_id = create.json()["data"]["id"]
 
-        response = client.get(f"/api/v1/conversations/{conv_id}")
+        response = client.get(f"/api/v1/conversations/{conv_id}", headers=auth_headers)
         assert response.json()["data"]["message_count"] == 0
 
     def test_message_count_after_chat(self, client, auth_headers):
@@ -73,7 +84,7 @@ class TestGetConversationSuccess:
             headers=auth_headers,
         )
 
-        response = client.get(f"/api/v1/conversations/{conv_id}")
+        response = client.get(f"/api/v1/conversations/{conv_id}", headers=auth_headers)
         assert response.json()["data"]["message_count"] == 2  # user + bot
 
 
@@ -83,13 +94,41 @@ class TestGetConversationSuccess:
 
 
 class TestGetConversationNotFound:
-    def test_not_found_returns_404(self, client):
-        response = client.get("/api/v1/conversations/999")
+    def test_not_found_returns_404(self, client, auth_headers):
+        response = client.get("/api/v1/conversations/999", headers=auth_headers)
         assert response.status_code == 404
         body = response.json()
         assert body["success"] is False
         assert body["error"]["code"] == "RES_001"
         assert "999" in body["error"]["message"]
+
+
+# ========================
+# GET /conversations/{id} — ownership (IDOR)
+# ========================
+
+
+class TestGetConversationOwnership:
+    def test_other_user_returns_403(self, client, auth_headers, user2_headers):
+        create = client.post("/api/v1/conversations", headers=auth_headers)
+        conv_id = create.json()["data"]["id"]
+
+        response = client.get(f"/api/v1/conversations/{conv_id}", headers=user2_headers)
+        assert response.status_code == 403
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "AUTH_002"
+
+
+# ========================
+# GET /conversations/{id}/messages — autenticação
+# ========================
+
+
+class TestGetConversationMessagesAuth:
+    def test_no_token_returns_401(self, client):
+        response = client.get("/api/v1/conversations/1/messages")
+        assert response.status_code == 401
 
 
 # ========================
@@ -114,7 +153,7 @@ class TestGetConversationMessagesSuccess:
     def test_returns_messages(self, client, auth_headers):
         conv_id = _create_conversation_with_messages(client, auth_headers, msg_count=1)
 
-        response = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        response = client.get(f"/api/v1/conversations/{conv_id}/messages", headers=auth_headers)
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
@@ -125,7 +164,7 @@ class TestGetConversationMessagesSuccess:
     def test_message_fields(self, client, auth_headers):
         conv_id = _create_conversation_with_messages(client, auth_headers, msg_count=1)
 
-        response = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        response = client.get(f"/api/v1/conversations/{conv_id}/messages", headers=auth_headers)
         msg = response.json()["data"]["messages"][0]
         assert "id" in msg
         assert msg["sender"] == "user"
@@ -135,7 +174,7 @@ class TestGetConversationMessagesSuccess:
     def test_messages_ordered_by_created_at(self, client, auth_headers):
         conv_id = _create_conversation_with_messages(client, auth_headers, msg_count=2)
 
-        response = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        response = client.get(f"/api/v1/conversations/{conv_id}/messages", headers=auth_headers)
         messages = response.json()["data"]["messages"]
         assert len(messages) == 4
         assert messages[0]["sender"] == "user"
@@ -147,7 +186,7 @@ class TestGetConversationMessagesSuccess:
         create = client.post("/api/v1/conversations", headers=auth_headers)
         conv_id = create.json()["data"]["id"]
 
-        response = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        response = client.get(f"/api/v1/conversations/{conv_id}/messages", headers=auth_headers)
         assert response.status_code == 200
         assert response.json()["data"]["messages"] == []
         assert response.json()["data"]["pagination"]["total"] == 0
@@ -156,7 +195,8 @@ class TestGetConversationMessagesSuccess:
         conv_id = _create_conversation_with_messages(client, auth_headers, msg_count=1)
 
         response = client.get(
-            f"/api/v1/conversations/{conv_id}/messages?limit=10&offset=0"
+            f"/api/v1/conversations/{conv_id}/messages?limit=10&offset=0",
+            headers=auth_headers,
         )
         pagination = response.json()["data"]["pagination"]
         assert pagination["limit"] == 10
@@ -167,7 +207,8 @@ class TestGetConversationMessagesSuccess:
         conv_id = _create_conversation_with_messages(client, auth_headers, msg_count=3)
 
         response = client.get(
-            f"/api/v1/conversations/{conv_id}/messages?limit=2"
+            f"/api/v1/conversations/{conv_id}/messages?limit=2",
+            headers=auth_headers,
         )
         data = response.json()["data"]
         assert len(data["messages"]) == 2
@@ -177,7 +218,8 @@ class TestGetConversationMessagesSuccess:
         conv_id = _create_conversation_with_messages(client, auth_headers, msg_count=2)
 
         response = client.get(
-            f"/api/v1/conversations/{conv_id}/messages?limit=50&offset=2"
+            f"/api/v1/conversations/{conv_id}/messages?limit=50&offset=2",
+            headers=auth_headers,
         )
         data = response.json()["data"]
         assert len(data["messages"]) == 2
@@ -187,7 +229,7 @@ class TestGetConversationMessagesSuccess:
         create = client.post("/api/v1/conversations", headers=auth_headers)
         conv_id = create.json()["data"]["id"]
 
-        response = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        response = client.get(f"/api/v1/conversations/{conv_id}/messages", headers=auth_headers)
         assert response.json()["data"]["pagination"]["limit"] == 50
 
 
@@ -197,8 +239,8 @@ class TestGetConversationMessagesSuccess:
 
 
 class TestGetConversationMessagesNotFound:
-    def test_not_found_returns_404(self, client):
-        response = client.get("/api/v1/conversations/999/messages")
+    def test_not_found_returns_404(self, client, auth_headers):
+        response = client.get("/api/v1/conversations/999/messages", headers=auth_headers)
         assert response.status_code == 404
         body = response.json()
         assert body["success"] is False
@@ -212,21 +254,51 @@ class TestGetConversationMessagesNotFound:
 
 
 class TestGetConversationMessagesValidation:
-    def test_limit_zero_returns_422(self, client):
-        response = client.get("/api/v1/conversations/1/messages?limit=0")
+    def test_limit_zero_returns_422(self, client, auth_headers):
+        response = client.get("/api/v1/conversations/1/messages?limit=0", headers=auth_headers)
         assert response.status_code == 422
 
-    def test_limit_exceeds_max_returns_422(self, client):
-        response = client.get("/api/v1/conversations/1/messages?limit=101")
+    def test_limit_exceeds_max_returns_422(self, client, auth_headers):
+        response = client.get("/api/v1/conversations/1/messages?limit=101", headers=auth_headers)
         assert response.status_code == 422
 
-    def test_negative_offset_returns_422(self, client):
-        response = client.get("/api/v1/conversations/1/messages?offset=-1")
+    def test_negative_offset_returns_422(self, client, auth_headers):
+        response = client.get("/api/v1/conversations/1/messages?offset=-1", headers=auth_headers)
         assert response.status_code == 422
 
-    def test_invalid_limit_type_returns_422(self, client):
-        response = client.get("/api/v1/conversations/1/messages?limit=abc")
+    def test_invalid_limit_type_returns_422(self, client, auth_headers):
+        response = client.get("/api/v1/conversations/1/messages?limit=abc", headers=auth_headers)
         assert response.status_code == 422
+
+
+# ========================
+# GET /conversations/{id}/messages — ownership (IDOR)
+# ========================
+
+
+class TestGetConversationMessagesOwnership:
+    def test_other_user_returns_403(self, client, auth_headers, user2_headers):
+        create = client.post("/api/v1/conversations", headers=auth_headers)
+        conv_id = create.json()["data"]["id"]
+
+        response = client.get(
+            f"/api/v1/conversations/{conv_id}/messages", headers=user2_headers
+        )
+        assert response.status_code == 403
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "AUTH_002"
+
+
+# ========================
+# PATCH /conversations/{id}/close — autenticação
+# ========================
+
+
+class TestCloseConversationAuth:
+    def test_no_token_returns_401(self, client):
+        response = client.patch("/api/v1/conversations/1/close")
+        assert response.status_code == 401
 
 
 # ========================
@@ -239,7 +311,7 @@ class TestCloseConversationSuccess:
         create = client.post("/api/v1/conversations", headers=auth_headers)
         conv_id = create.json()["data"]["id"]
 
-        response = client.patch(f"/api/v1/conversations/{conv_id}/close")
+        response = client.patch(f"/api/v1/conversations/{conv_id}/close", headers=auth_headers)
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
@@ -252,7 +324,7 @@ class TestCloseConversationSuccess:
         create = client.post("/api/v1/conversations", headers=auth_headers)
         conv_id = create.json()["data"]["id"]
 
-        response = client.patch(f"/api/v1/conversations/{conv_id}/close")
+        response = client.patch(f"/api/v1/conversations/{conv_id}/close", headers=auth_headers)
         data = response.json()["data"]
         assert data["user_id"] == 1
         assert data["company_id"] == 1
@@ -261,9 +333,9 @@ class TestCloseConversationSuccess:
         create = client.post("/api/v1/conversations", headers=auth_headers)
         conv_id = create.json()["data"]["id"]
 
-        client.patch(f"/api/v1/conversations/{conv_id}/close")
+        client.patch(f"/api/v1/conversations/{conv_id}/close", headers=auth_headers)
 
-        response = client.get(f"/api/v1/conversations/{conv_id}")
+        response = client.get(f"/api/v1/conversations/{conv_id}", headers=auth_headers)
         data = response.json()["data"]
         assert data["status"] == "closed"
         assert data["ended_at"] is not None
@@ -275,8 +347,8 @@ class TestCloseConversationSuccess:
 
 
 class TestCloseConversationErrors:
-    def test_not_found_returns_404(self, client):
-        response = client.patch("/api/v1/conversations/999/close")
+    def test_not_found_returns_404(self, client, auth_headers):
+        response = client.patch("/api/v1/conversations/999/close", headers=auth_headers)
         assert response.status_code == 404
         body = response.json()
         assert body["success"] is False
@@ -287,11 +359,30 @@ class TestCloseConversationErrors:
         create = client.post("/api/v1/conversations", headers=auth_headers)
         conv_id = create.json()["data"]["id"]
 
-        client.patch(f"/api/v1/conversations/{conv_id}/close")
-        response = client.patch(f"/api/v1/conversations/{conv_id}/close")
+        client.patch(f"/api/v1/conversations/{conv_id}/close", headers=auth_headers)
+        response = client.patch(f"/api/v1/conversations/{conv_id}/close", headers=auth_headers)
 
         assert response.status_code == 400
         body = response.json()
         assert body["success"] is False
         assert body["error"]["code"] == "CHAT_001"
         assert "já está encerrada" in body["error"]["message"]
+
+
+# ========================
+# PATCH /conversations/{id}/close — ownership (IDOR)
+# ========================
+
+
+class TestCloseConversationOwnership:
+    def test_other_user_returns_403(self, client, auth_headers, user2_headers):
+        create = client.post("/api/v1/conversations", headers=auth_headers)
+        conv_id = create.json()["data"]["id"]
+
+        response = client.patch(
+            f"/api/v1/conversations/{conv_id}/close", headers=user2_headers
+        )
+        assert response.status_code == 403
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "AUTH_002"

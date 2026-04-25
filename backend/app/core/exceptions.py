@@ -11,6 +11,7 @@ Catálogo de error codes por domínio:
     AUTH_001  — API key ausente
     AUTH_002  — API key inválida
     AUTH_003  — JWT inválido ou expirado
+    AUTH_004  — Telefone ou email já registrado
     CHAT_001  — Conteúdo repetitivo (spam)
     DB_001    — Erro genérico de banco de dados
     DB_002    — Violação de constraint (FK, UNIQUE, NOT NULL)
@@ -63,6 +64,13 @@ class InvalidTokenError(AppError):
 
     status_code = 401
     code = "AUTH_003"
+
+
+class RegistrationError(AppError):
+    """Dados de cadastro em conflito — phone ou email já registrado."""
+
+    status_code = 400
+    code = "AUTH_004"
 
 
 # --- Erros de negócio ---

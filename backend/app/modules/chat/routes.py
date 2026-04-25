@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/v1", tags=["chat"])
 @router.post(
     "/chat",
     response_model=SuccessResponse,
+    openapi_extra={"security": [{"bearerAuth": []}]},
     responses={
         400: {
             "model": ErrorResponse,

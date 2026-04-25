@@ -76,7 +76,7 @@ class TestChatExistingConversation:
     def test_closed_conversation_returns_400(self, client, auth_headers):
         r1 = client.post("/api/v1/chat", json={"message": "Oi"}, headers=auth_headers)
         conv_id = r1.json()["data"]["conversation_id"]
-        client.patch(f"/api/v1/conversations/{conv_id}/close")
+        client.patch(f"/api/v1/conversations/{conv_id}/close", headers=auth_headers)
 
         response = client.post(
             "/api/v1/chat",
@@ -99,7 +99,7 @@ class TestChatExistingConversation:
             headers=auth_headers,
         )
 
-        response = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        response = client.get(f"/api/v1/conversations/{conv_id}/messages", headers=auth_headers)
         messages = response.json()["data"]["messages"]
         assert len(messages) == 4  # 2 user + 2 bot
         assert messages[0]["sender"] == "user"
@@ -271,7 +271,7 @@ class TestChatTransactionAtomicity:
         )
         assert response.status_code == 400
 
-        r = client.get("/api/v1/conversations/1")
+        r = client.get("/api/v1/conversations/1", headers=auth_headers)
         assert r.status_code == 404
 
     def test_successful_chat_persists_conversation_and_messages(self, client, auth_headers):
@@ -284,10 +284,10 @@ class TestChatTransactionAtomicity:
         assert response.status_code == 200
         conv_id = response.json()["data"]["conversation_id"]
 
-        r = client.get(f"/api/v1/conversations/{conv_id}")
+        r = client.get(f"/api/v1/conversations/{conv_id}", headers=auth_headers)
         assert r.status_code == 200
 
-        r = client.get(f"/api/v1/conversations/{conv_id}/messages")
+        r = client.get(f"/api/v1/conversations/{conv_id}/messages", headers=auth_headers)
         assert r.status_code == 200
         assert r.json()["data"]["pagination"]["total"] == 2
 

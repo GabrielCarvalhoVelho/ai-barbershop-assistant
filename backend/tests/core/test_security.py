@@ -54,39 +54,28 @@ class TestAuthNoKeyConfigured:
 
 
 class TestAuthWithKeyConfigured:
-    """Quando API_KEY está configurada, rotas protegidas por require_api_key exigem o header."""
+    """Conversas usam JWT — API key não substitui Bearer token."""
 
-    def test_conversations_without_key_returns_401(self):
+    def test_conversations_without_jwt_returns_401(self):
         with patch.object(settings, "api_key", "test-secret-key"):
             client = TestClient(app)
             response = client.get("/api/v1/conversations/999")
         assert response.status_code == 401
         body = response.json()
         assert body["success"] is False
-        assert body["error"]["code"] == "AUTH_001"
-        assert "ausente" in body["error"]["message"]
+        assert body["error"]["code"] == "AUTH_003"
 
-    def test_conversations_with_wrong_key_returns_403(self):
-        with patch.object(settings, "api_key", "test-secret-key"):
-            client = TestClient(app)
-            response = client.get(
-                "/api/v1/conversations/999",
-                headers={"X-API-Key": "wrong-key"},
-            )
-        assert response.status_code == 403
-        body = response.json()
-        assert body["success"] is False
-        assert body["error"]["code"] == "AUTH_002"
-        assert "inválida" in body["error"]["message"]
-
-    def test_conversations_with_correct_key_passes_auth(self):
+    def test_conversations_with_api_key_but_no_jwt_returns_401(self):
         with patch.object(settings, "api_key", "test-secret-key"):
             client = TestClient(app)
             response = client.get(
                 "/api/v1/conversations/999",
                 headers={"X-API-Key": "test-secret-key"},
             )
-        assert response.status_code == 404  # auth passed, conversation not found
+        assert response.status_code == 401
+        body = response.json()
+        assert body["success"] is False
+        assert body["error"]["code"] == "AUTH_003"
 
     def test_health_still_open(self):
         with patch.object(settings, "api_key", "test-secret-key"):

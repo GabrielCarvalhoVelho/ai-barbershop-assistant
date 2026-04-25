@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/v1", tags=["conversations"])
     "/conversations",
     response_model=SuccessResponse,
     status_code=201,
+    openapi_extra={"security": [{"bearerAuth": []}]},
     responses={
         401: {
             "model": ErrorResponse,
@@ -71,6 +72,7 @@ async def create_conversation(
 @router.get(
     "/conversations/{conversation_id}",
     response_model=SuccessResponse,
+    openapi_extra={"security": [{"bearerAuth": []}]},
     responses={
         401: {
             "model": ErrorResponse,
@@ -122,6 +124,7 @@ async def get_conversation(
 @router.get(
     "/conversations/{conversation_id}/messages",
     response_model=SuccessResponse,
+    openapi_extra={"security": [{"bearerAuth": []}]},
     responses={
         401: {
             "model": ErrorResponse,
@@ -177,6 +180,7 @@ async def get_conversation_messages(
 @router.patch(
     "/conversations/{conversation_id}/close",
     response_model=SuccessResponse,
+    openapi_extra={"security": [{"bearerAuth": []}]},
     responses={
         400: {
             "model": ErrorResponse,

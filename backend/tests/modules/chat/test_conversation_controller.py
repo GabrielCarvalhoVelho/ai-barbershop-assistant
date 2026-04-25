@@ -224,7 +224,7 @@ class TestConversationControllerGetByIdNotFound:
 
         with pytest.raises(NotFoundError) as exc_info:
             await ConversationController.get_by_id(
-                999, conv_repo, msg_repo
+                999, current_user=_make_user(), conversation_repo=conv_repo, message_repo=msg_repo
             )
 
         assert "999" in exc_info.value.message
@@ -261,7 +261,7 @@ class TestConversationControllerGetMessages:
         msg_repo.count_by_conversation.return_value = 2
 
         response = await ConversationController.get_messages(
-            1, limit=50, offset=0,
+            1, current_user=_make_user(), limit=50, offset=0,
             conversation_repo=conv_repo, message_repo=msg_repo
         )
 
@@ -281,7 +281,7 @@ class TestConversationControllerGetMessages:
         msg_repo.count_by_conversation.return_value = 1
 
         response = await ConversationController.get_messages(
-            1, limit=50, offset=0,
+            1, current_user=_make_user(), limit=50, offset=0,
             conversation_repo=conv_repo, message_repo=msg_repo
         )
 
@@ -301,7 +301,7 @@ class TestConversationControllerGetMessages:
         msg_repo.count_by_conversation.return_value = 15
 
         response = await ConversationController.get_messages(
-            1, limit=10, offset=5,
+            1, current_user=_make_user(), limit=10, offset=5,
             conversation_repo=conv_repo, message_repo=msg_repo
         )
 
@@ -320,7 +320,7 @@ class TestConversationControllerGetMessages:
         msg_repo.count_by_conversation.return_value = 0
 
         await ConversationController.get_messages(
-            1, limit=20, offset=10,
+            1, current_user=_make_user(), limit=20, offset=10,
             conversation_repo=conv_repo, message_repo=msg_repo
         )
 
@@ -338,7 +338,7 @@ class TestConversationControllerGetMessages:
         msg_repo.count_by_conversation.return_value = 0
 
         response = await ConversationController.get_messages(
-            1, limit=50, offset=0,
+            1, current_user=_make_user(), limit=50, offset=0,
             conversation_repo=conv_repo, message_repo=msg_repo
         )
 
@@ -360,7 +360,7 @@ class TestConversationControllerGetMessagesNotFound:
 
         with pytest.raises(NotFoundError) as exc_info:
             await ConversationController.get_messages(
-                999, limit=50, offset=0,
+                999, current_user=_make_user(), limit=50, offset=0,
                 conversation_repo=conv_repo, message_repo=msg_repo
             )
 
@@ -392,7 +392,7 @@ class TestConversationControllerClose:
         conv_repo.get_by_id.return_value = conv
         conv_repo.close.return_value = closed
 
-        response = await ConversationController.close(10, conv_repo)
+        response = await ConversationController.close(10, current_user=_make_user(), conversation_repo=conv_repo)
 
         conv_repo.close.assert_called_once_with(10)
         assert isinstance(response, SuccessResponse)
@@ -410,7 +410,7 @@ class TestConversationControllerClose:
         conv_repo.get_by_id.return_value = conv
         conv_repo.close.return_value = closed
 
-        response = await ConversationController.close(5, conv_repo)
+        response = await ConversationController.close(5, current_user=_make_user(id_=2), conversation_repo=conv_repo)
 
         data = response.data
         assert data["id"] == 5
@@ -429,7 +429,7 @@ class TestConversationControllerClose:
         conv_repo.get_by_id.return_value = conv
         conv_repo.close.return_value = closed
 
-        response = await ConversationController.close(1, conv_repo)
+        response = await ConversationController.close(1, current_user=_make_user(), conversation_repo=conv_repo)
 
         assert response.data["ended_at"] is not None
 
@@ -446,7 +446,7 @@ class TestConversationControllerCloseErrors:
         conv_repo.get_by_id.return_value = None
 
         with pytest.raises(NotFoundError) as exc_info:
-            await ConversationController.close(999, conv_repo)
+            await ConversationController.close(999, current_user=_make_user(), conversation_repo=conv_repo)
 
         assert "999" in exc_info.value.message
         conv_repo.close.assert_not_called()
@@ -460,7 +460,7 @@ class TestConversationControllerCloseErrors:
         conv_repo.get_by_id.return_value = conv
 
         with pytest.raises(BusinessError) as exc_info:
-            await ConversationController.close(1, conv_repo)
+            await ConversationController.close(1, current_user=_make_user(), conversation_repo=conv_repo)
 
         assert "já está encerrada" in exc_info.value.message
         conv_repo.close.assert_not_called()
