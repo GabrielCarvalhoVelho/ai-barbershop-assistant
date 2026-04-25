@@ -24,7 +24,7 @@ from app.core.error_handler import (
 )
 from app.core.exceptions import AppError
 from app.core.logger import setup_logger
-from app.core.middleware import RequestIDMiddleware
+from app.core.middleware import RequestIDMiddleware, SecurityHeadersMiddleware
 from app.core.rate_limiter import limiter
 from app.db.database import async_session, create_tables, dispose_engine
 from app.modules.chat.conversation_routes import router as conversation_router
@@ -54,6 +54,7 @@ app.state.limiter = limiter
 
 setup_logger()
 
+app.add_middleware(SecurityHeadersMiddleware, debug=settings.debug)
 app.add_middleware(RequestIDMiddleware)
 app.add_middleware(
     CORSMiddleware,

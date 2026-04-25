@@ -12,6 +12,7 @@ Catálogo de error codes por domínio:
     AUTH_002  — API key inválida
     AUTH_003  — JWT inválido ou expirado
     AUTH_004  — Telefone ou email já registrado
+    AUTH_005  — Conta bloqueada por excesso de tentativas de login
     CHAT_001  — Conteúdo repetitivo (spam)
     DB_001    — Erro genérico de banco de dados
     DB_002    — Violação de constraint (FK, UNIQUE, NOT NULL)
@@ -71,6 +72,13 @@ class RegistrationError(AppError):
 
     status_code = 400
     code = "AUTH_004"
+
+
+class AccountLockedError(AppError):
+    """Conta bloqueada temporariamente por excesso de falhas de login."""
+
+    status_code = 429
+    code = "AUTH_005"
 
 
 # --- Erros de negócio ---

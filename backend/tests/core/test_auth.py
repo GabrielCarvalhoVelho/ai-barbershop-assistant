@@ -1,8 +1,11 @@
-import pytest
+from unittest.mock import AsyncMock, patch
 
-from app.core.auth import require_role
-from app.core.exceptions import AuthorizationError
-from app.core.security import hash_password
+import pytest
+from fastapi.security import HTTPAuthorizationCredentials
+
+from app.core.auth import get_current_user, require_role
+from app.core.exceptions import AuthorizationError, InvalidTokenError
+from app.core.security import create_access_token, hash_password
 from app.models.enums import UserRole
 from app.models.user import User
 
@@ -57,3 +60,44 @@ class TestRequireRole:
         with pytest.raises(AuthorizationError) as exc_info:
             await dep(current_user=user)
         assert exc_info.value.status_code == 403
+
+
+class TestGetCurrentUser:
+    @pytest.mark.asyncio
+    async def test_null_sub_raises_invalid_token(self):
+        token = create_access_token({"data": "sem_sub"})
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        mock_session = AsyncMock()
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await get_current_user(credentials=credentials, session=mock_session)
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.code == "AUTH_003"
+
+    @pytest.mark.asyncio
+    async def test_missing_credentials_raises_invalid_token(self):
+        mock_session = AsyncMock()
+        with pytest.raises(InvalidTokenError):
+            await get_current_user(credentials=None, session=mock_session)
+
+    @pytest.mark.asyncio
+    async def test_user_deleted_after_token_issued(self):
+        """Token válido mas user removido do DB → InvalidTokenError."""
+        token = create_access_token({"sub": "999"})
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        mock_session = AsyncMock()
+        with patch("app.core.auth.UserRepository") as MockRepo:
+            instance = AsyncMock()
+            instance.get_by_id.return_value = None
+            MockRepo.return_value = instance
+            with pytest.raises(InvalidTokenError):
+                await get_current_user(credentials=credentials, session=mock_session)
+
+    def test_bearer_without_token_returns_401(self, client):
+        """Header Authorization sem token após 'Bearer ' retorna 401."""
+        response = client.get("/api/v1/auth/me", headers={"Authorization": "Bearer "})
+        assert response.status_code == 401
+
+    def test_non_bearer_scheme_returns_401(self, client):
+        """Header Authorization com scheme diferente de Bearer retorna 401."""
+        response = client.get("/api/v1/auth/me", headers={"Authorization": "Token abc123"})
+        assert response.status_code == 401

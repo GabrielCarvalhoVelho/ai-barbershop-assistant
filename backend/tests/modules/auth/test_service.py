@@ -1,7 +1,8 @@
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
-from app.core.exceptions import AuthenticationError
+import app.core.lockout as lockout_module
+from app.core.exceptions import AccountLockedError, AuthenticationError
 from app.core.security import hash_password
 from app.models.enums import UserRole
 from app.models.user import User
@@ -74,3 +75,93 @@ class TestAuthenticateUser:
             await authenticate_user("+5511000000001", "wrong", repo_wrong_pass)
 
         assert exc_not_found.value.message == exc_wrong_pass.value.message == _INVALID_CREDENTIALS
+
+
+class TestAccountLockout:
+    def setup_method(self):
+        lockout_module._store.clear()
+
+    @pytest.mark.asyncio
+    async def test_lockout_after_max_attempts(self):
+        """5 falhas consecutivas → 6ª levanta AccountLockedError (AUTH_005, 429)."""
+        phone = "+5511lockout001"
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = None
+
+        for _ in range(5):
+            with pytest.raises(AuthenticationError):
+                await authenticate_user(phone, "errada", repo)
+
+        with pytest.raises(AccountLockedError) as exc_info:
+            await authenticate_user(phone, "errada", repo)
+        assert exc_info.value.code == "AUTH_005"
+        assert exc_info.value.status_code == 429
+
+    @pytest.mark.asyncio
+    async def test_success_resets_lockout_counter(self):
+        """Login bem-sucedido zera o contador — 5 novas falhas necessárias para bloquear."""
+        phone = "+5511lockout002"
+        user = _make_user()
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = None
+
+        for _ in range(3):
+            with pytest.raises(AuthenticationError):
+                await authenticate_user(phone, "errada", repo)
+
+        repo.get_by_phone.return_value = user
+        result = await authenticate_user(phone, "correct_pass", repo)
+        assert result is user
+
+        # Contador zerado — 3 novas falhas não bloqueiam
+        repo.get_by_phone.return_value = None
+        for _ in range(3):
+            with pytest.raises(AuthenticationError):
+                await authenticate_user(phone, "errada", repo)
+        assert not lockout_module.is_locked(phone)
+
+    @pytest.mark.asyncio
+    async def test_lockout_message_contains_remaining_seconds(self):
+        """Mensagem de bloqueio deve mencionar o tempo restante em segundos."""
+        phone = "+5511lockout003"
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = None
+
+        for _ in range(5):
+            with pytest.raises(AuthenticationError):
+                await authenticate_user(phone, "errada", repo)
+
+        with pytest.raises(AccountLockedError) as exc_info:
+            await authenticate_user(phone, "errada", repo)
+        assert "segundos" in exc_info.value.message
+
+    @pytest.mark.asyncio
+    async def test_lockout_expires_after_ttl(self):
+        """Após expirar o TTL, is_locked retorna False e novas tentativas são permitidas."""
+        phone = "+5511lockout004"
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = None
+
+        with patch.object(lockout_module, "LOCKOUT_DURATION_SECONDS", 0):
+            for _ in range(5):
+                with pytest.raises(AuthenticationError):
+                    await authenticate_user(phone, "errada", repo)
+
+        assert not lockout_module.is_locked(phone)
+
+    @pytest.mark.asyncio
+    async def test_lockout_is_per_phone(self):
+        """Bloqueio de um phone não afeta outro phone."""
+        phone_a = "+5511lockout005A"
+        phone_b = "+5511lockout005B"
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = None
+
+        for _ in range(5):
+            with pytest.raises(AuthenticationError):
+                await authenticate_user(phone_a, "errada", repo)
+
+        # phone_b ainda não está bloqueado — deve levantar AuthenticationError (não lockout)
+        with pytest.raises(AuthenticationError) as exc_info:
+            await authenticate_user(phone_b, "errada", repo)
+        assert exc_info.value.code == "AUTH_001"

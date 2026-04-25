@@ -4,7 +4,7 @@ TCC — backend de atendimento automatizado para barbearias via IA generativa (F
 
 ## Estado atual
 
-**525 testes.** JWT concluído em todos os endpoints de chat e conversas — todas as 5 rotas usam `get_current_user`. Login hardened com rate limiting, validações corretas e LGPD compliance. Próximo: agendamento automático de horários.
+**542 testes.** Middleware de autenticação concluído: `SecurityHeadersMiddleware` (X-Frame-Options, CSP headers, HSTS em prod) + account lockout após 5 falhas de login (15 min, `app/core/lockout.py`, `AUTH_005`). Registro/login com JWT — todas as 5 rotas de chat usam `get_current_user`. Próximo: agendamento automático de horários.
 
 ## Como rodar
 
