@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 from unittest.mock import AsyncMock, patch
 
@@ -165,3 +167,60 @@ class TestAccountLockout:
         with pytest.raises(AuthenticationError) as exc_info:
             await authenticate_user(phone_b, "errada", repo)
         assert exc_info.value.code == "AUTH_001"
+
+
+class TestAuthServiceLogging:
+    def setup_method(self):
+        lockout_module._store.clear()
+
+    @pytest.mark.asyncio
+    async def test_login_failure_logged(self, caplog):
+        user = _make_user()
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = user
+
+        with caplog.at_level(logging.WARNING, logger="app.modules.auth.service"):
+            with pytest.raises(AuthenticationError):
+                await authenticate_user("+5511000000001", "wrong_pass", repo)
+
+        assert any("login_failed" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_login_success_logged(self, caplog):
+        user = _make_user()
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = user
+
+        with caplog.at_level(logging.INFO, logger="app.modules.auth.service"):
+            await authenticate_user("+5511000000001", "correct_pass", repo)
+
+        assert any("login_success" in r.message for r in caplog.records)
+        assert not any("+5511000000001" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_lockout_logged(self, caplog):
+        phone = "+5511log001"
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = None
+
+        for _ in range(5):
+            with pytest.raises(AuthenticationError):
+                await authenticate_user(phone, "errada", repo)
+
+        with caplog.at_level(logging.WARNING, logger="app.modules.auth.service"):
+            with pytest.raises(AccountLockedError):
+                await authenticate_user(phone, "errada", repo)
+
+        assert any("login_blocked" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_phone_not_in_logs(self, caplog):
+        phone = "+5511log002"
+        repo = AsyncMock()
+        repo.get_by_phone.return_value = None
+
+        with caplog.at_level(logging.DEBUG, logger="app.modules.auth.service"):
+            with pytest.raises(AuthenticationError):
+                await authenticate_user(phone, "errada", repo)
+
+        assert not any(phone in r.message for r in caplog.records)

@@ -49,13 +49,16 @@ class TestHealthDBDown:
 
             return _gen()
 
+        original = app.dependency_overrides.get(get_session)
         app.dependency_overrides[get_session] = _broken_session
         try:
             response = client.get("/api/v1/health")
             assert response.status_code == 503
         finally:
-            app.dependency_overrides[get_session]  # reset abaixo
-            del app.dependency_overrides[get_session]
+            if original is not None:
+                app.dependency_overrides[get_session] = original
+            else:
+                app.dependency_overrides.pop(get_session, None)
 
     def test_data_status_degraded(self, client):
         def _broken_session():
@@ -69,10 +72,14 @@ class TestHealthDBDown:
 
             return _gen()
 
+        original = app.dependency_overrides.get(get_session)
         app.dependency_overrides[get_session] = _broken_session
         try:
             body = client.get("/api/v1/health").json()
             assert body["data"]["status"] == "degraded"
             assert body["data"]["database"] == "unavailable"
         finally:
-            del app.dependency_overrides[get_session]
+            if original is not None:
+                app.dependency_overrides[get_session] = original
+            else:
+                app.dependency_overrides.pop(get_session, None)

@@ -22,7 +22,7 @@ from app.core.security import create_access_token
 from app.db.database import Base, get_session
 from app.main import app
 from app.models.company import Company
-from app.models.enums import DocumentCategory
+from app.models.enums import DocumentCategory, UserRole
 from app.models.knowledge_document import KnowledgeDocument
 from app.models.user import User
 
@@ -111,6 +111,17 @@ async def setup_db():
         session.add(user2)
         await session.commit()
 
+        # Admin user para testes de require_role(ADMIN) — user_id=3, company_id=1
+        admin_user = User(
+            company_id=company.id,
+            name="Admin Teste",
+            phone="+5511977777777",
+            password_hash="placeholder",
+            role=UserRole.ADMIN,
+        )
+        session.add(admin_user)
+        await session.commit()
+
     yield
 
     async with test_engine.begin() as conn:
@@ -142,6 +153,17 @@ def chat_token():
 @pytest.fixture
 def auth_headers(chat_token):
     return {"Authorization": f"Bearer {chat_token}"}
+
+
+@pytest.fixture
+def admin_token():
+    """JWT para admin_user (user_id=3, company_id=1, role=ADMIN) — criado pelo setup_db global."""
+    return create_access_token({"sub": "3"})
+
+
+@pytest.fixture
+def admin_headers(admin_token):
+    return {"Authorization": f"Bearer {admin_token}"}
 
 
 @pytest_asyncio.fixture
