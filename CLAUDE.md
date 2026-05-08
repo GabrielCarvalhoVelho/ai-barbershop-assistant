@@ -4,7 +4,13 @@ TCC — backend de atendimento automatizado para barbearias via IA generativa (F
 
 ## Estado atual
 
-**556 testes.** Checklist de autenticação fechado: middleware de segurança, account lockout, log de falhas de auth (LGPD-safe, sem phone/password nos logs), admin CRUD da base de conhecimento com `require_role(ADMIN)` em `/api/v1/admin/knowledge`. Próximo: agendamento automático de horários.
+**~690 testes.** Sistema de agendamento automático completo:
+- Model `Appointment` + migração Alembic (`appointmentstatus` ENUM portável SQLite/PostgreSQL)
+- `AppointmentRepository` com detecção de conflito portável (Python-side overlap check)
+- Schemas Pydantic, service com regras de negócio, controller, 4 endpoints REST protegidos por JWT
+- Integração LLM: assistente emite bloco `<APPOINTMENT>` → parser extrai e valida → cria no banco
+- Endpoints: `POST /api/v1/appointments/`, `GET /api/v1/appointments/me`, `GET /api/v1/appointments/{id}`, `PATCH /api/v1/appointments/{id}/cancel`
+- Error codes por domínio: `APT_001` (conflito de horário), `CHAT_001` (spam/regras de chat)
 
 ## Como rodar
 

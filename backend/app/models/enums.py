@@ -29,3 +29,10 @@ class DocumentCategory(str, Enum):
 class UserRole(str, Enum):
     CUSTOMER = "customer"
     ADMIN = "admin"
+
+
+class AppointmentStatus(str, Enum):
+    SCHEDULED = "scheduled"
+    CONFIRMED = "confirmed"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"

@@ -35,7 +35,14 @@ _RULES = (
     "- Nunca invente informações. Se não tiver a informação solicitada, "
     "oriente o cliente a entrar em contato pelo telefone da barbearia.\n"
     "- Quando o cliente quiser agendar, colete: serviço desejado, data e "
-    "horário preferidos."
+    "horário preferidos.\n"
+    "- Quando tiver TODOS os dados para agendar (serviço, data e horário), "
+    "inclua ao final da sua resposta o bloco abaixo — sem texto adicional após ele:\n"
+    "<APPOINTMENT>\n"
+    "service=NOME_DO_SERVIÇO\n"
+    "scheduled_at=YYYY-MM-DDTHH:MM:00Z\n"
+    "duration_minutes=30\n"
+    "</APPOINTMENT>"
 )
 
 _BUSINESS_DETAILS_TEMPLATE = "Informações da barbearia:\n{details}"

@@ -5,8 +5,10 @@ from app.models.enums import ConversationStatus, UserRole
 from app.models.user import User
 from app.modules.ai.context_service import format_knowledge_context
 from app.modules.ai.prompts import BusinessInfo
+from app.modules.chat.appointment_parser import extract_appointment, strip_appointment_block
 from app.modules.chat.repository import ConversationRepository, MessageRepository
 from app.repositories import CompanyRepository, KnowledgeDocumentRepository
+from app.repositories.appointment_repository import AppointmentRepository
 from app.modules.chat.schemas import (
     ChatRequest,
     ChatResponse,
@@ -31,6 +33,7 @@ class ChatController:
         message_repo: MessageRepository,
         company_repo: CompanyRepository,
         knowledge_repo: KnowledgeDocumentRepository,
+        appointment_repo: AppointmentRepository,
     ) -> SuccessResponse:
         user_id = current_user.id
         company_id = current_user.company_id
@@ -90,6 +93,37 @@ class ChatController:
         response_text = await generate_response(
             request.message, history, business_info, context=context
         )
+
+        appointment_data = extract_appointment(response_text)
+        if appointment_data is not None:
+            try:
+                has_conflict = await appointment_repo.has_conflict(
+                    company_id=company_id,
+                    scheduled_at=appointment_data.scheduled_at,
+                    duration_minutes=appointment_data.duration_minutes,
+                )
+                if not has_conflict:
+                    await appointment_repo.create(
+                        user_id=user_id,
+                        company_id=company_id,
+                        service=appointment_data.service,
+                        scheduled_at=appointment_data.scheduled_at,
+                        duration_minutes=appointment_data.duration_minutes,
+                    )
+                    logger.info(
+                        "Agendamento criado via chat: user_id=%s service=%s",
+                        user_id,
+                        appointment_data.service,
+                    )
+                else:
+                    logger.warning(
+                        "Conflito de horário via chat: user_id=%s scheduled_at=%s",
+                        user_id,
+                        appointment_data.scheduled_at,
+                    )
+            except Exception:
+                logger.exception("Falha ao criar agendamento via chat: user_id=%s", user_id)
+            response_text = strip_appointment_block(response_text)
 
         try:
             await message_repo.save_pair(

@@ -13,7 +13,8 @@ Catálogo de error codes por domínio:
     AUTH_003  — JWT inválido ou expirado
     AUTH_004  — Telefone ou email já registrado
     AUTH_005  — Conta bloqueada por excesso de tentativas de login
-    CHAT_001  — Conteúdo repetitivo (spam)
+    APT_001   — Conflito de horário de agendamento
+    CHAT_001  — Conteúdo repetitivo (spam) ou regra de negócio de chat
     DB_001    — Erro genérico de banco de dados
     DB_002    — Violação de constraint (FK, UNIQUE, NOT NULL)
     DB_003    — Serviço de banco indisponível
@@ -89,6 +90,13 @@ class BusinessError(AppError):
 
     status_code = 400
     code = "CHAT_001"
+
+
+class AppointmentConflictError(BusinessError):
+    """Conflito de horário — agendamento sobrepõe outro já existente."""
+
+    status_code = 400
+    code = "APT_001"
 
 
 class ValidationError(AppError):

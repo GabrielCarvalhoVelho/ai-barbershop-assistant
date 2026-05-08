@@ -47,6 +47,7 @@ def _make_repos(conversation=None):
     msg_repo = AsyncMock()
     company_repo = AsyncMock()
     knowledge_repo = AsyncMock()
+    appointment_repo = AsyncMock()
 
     conv_repo.create.return_value = conversation or _make_conversation()
     conv_repo.get_by_id.return_value = conversation
@@ -54,12 +55,13 @@ def _make_repos(conversation=None):
     msg_repo.get_by_conversation.return_value = []
     company_repo.get_by_id.return_value = _make_company()
     knowledge_repo.get_by_company.return_value = []
+    appointment_repo.has_conflict.return_value = False
 
-    return conv_repo, msg_repo, company_repo, knowledge_repo
+    return conv_repo, msg_repo, company_repo, knowledge_repo, appointment_repo
 
 
 def _call(request, *repos, user_id=1, company_id=1):
-    conv_repo, msg_repo, company_repo, knowledge_repo = repos
+    conv_repo, msg_repo, company_repo, knowledge_repo, appointment_repo = repos
     return ChatController.send_message(
         request,
         current_user=_make_user(id_=user_id, company_id=company_id),
@@ -67,6 +69,7 @@ def _call(request, *repos, user_id=1, company_id=1):
         message_repo=msg_repo,
         company_repo=company_repo,
         knowledge_repo=knowledge_repo,
+        appointment_repo=appointment_repo,
     )
 
 
@@ -91,7 +94,7 @@ class TestChatControllerNewConversation:
     @pytest.mark.asyncio
     async def test_passes_user_and_company_to_create(self):
         repos = _make_repos()
-        conv_repo, _, company_repo, _ = repos
+        conv_repo, _, company_repo, *_ = repos
         company_repo.get_by_id.return_value = _make_company(id_=3)
 
         request = ChatRequest(message="Oi")
@@ -366,3 +369,69 @@ class TestChatControllerKnowledgeContext:
             await _call(request, *repos, user_id=7, company_id=5)
 
         repos[3].get_by_company.assert_called_once_with(5)
+
+
+# ========================
+# Integração com agendamento automático
+# ========================
+
+_FUTURE_ISO = "2030-12-01T14:00:00Z"
+_APPT_BLOCK = (
+    f"Perfeito! Agendei para você.\n"
+    f"<APPOINTMENT>\n"
+    f"service=Corte\n"
+    f"scheduled_at={_FUTURE_ISO}\n"
+    f"duration_minutes=30\n"
+    f"</APPOINTMENT>"
+)
+
+
+class TestChatControllerAppointmentIntegration:
+    @pytest.mark.asyncio
+    async def test_sem_bloco_nao_chama_create(self):
+        repos = _make_repos()
+        request = ChatRequest(message="Oi")
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=MOCK_AI_RESPONSE)):
+            await _call(request, *repos)
+        repos[4].create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_bloco_valido_chama_create(self):
+        repos = _make_repos()
+        repos[4].has_conflict.return_value = False
+        request = ChatRequest(message="Quero corte amanhã às 14h")
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=_APPT_BLOCK)):
+            await _call(request, *repos)
+        repos[4].create.assert_awaited_once()
+        call_kwargs = repos[4].create.call_args.kwargs
+        assert call_kwargs["service"] == "Corte"
+
+    @pytest.mark.asyncio
+    async def test_conflito_nao_chama_create(self):
+        repos = _make_repos()
+        repos[4].has_conflict.return_value = True
+        request = ChatRequest(message="Quero corte amanhã às 14h")
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=_APPT_BLOCK)):
+            await _call(request, *repos)
+        repos[4].create.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_excecao_no_create_nao_interrompe_chat(self):
+        repos = _make_repos()
+        repos[4].has_conflict.return_value = False
+        repos[4].create.side_effect = Exception("DB indisponível")
+        request = ChatRequest(message="Quero corte amanhã às 14h")
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=_APPT_BLOCK)):
+            result = await _call(request, *repos)
+        assert isinstance(result, SuccessResponse)
+
+    @pytest.mark.asyncio
+    async def test_bloco_removido_da_resposta_ao_cliente(self):
+        repos = _make_repos()
+        repos[4].has_conflict.return_value = False
+        request = ChatRequest(message="Quero corte amanhã às 14h")
+        with patch(MOCK_TARGET, new=AsyncMock(return_value=_APPT_BLOCK)):
+            result = await _call(request, *repos)
+        response_text = result.data["response"]
+        assert "<APPOINTMENT>" not in response_text
+        assert "Perfeito! Agendei para você." in response_text

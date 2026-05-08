@@ -356,6 +356,8 @@ class TestControllerErrorPropagation:
         mock_company_repo.get_by_id.return_value = AsyncMock(id=1)
         mock_knowledge_repo = AsyncMock()
         mock_knowledge_repo.get_by_company.return_value = []
+        mock_appointment_repo = AsyncMock()
+        mock_appointment_repo.has_conflict.return_value = False
 
         request = ChatRequest(message="Quero agendar")
         with pytest.raises(ConflictError):
@@ -364,6 +366,7 @@ class TestControllerErrorPropagation:
                 conversation_repo=mock_conv_repo, message_repo=mock_msg_repo,
                 company_repo=mock_company_repo,
                 knowledge_repo=mock_knowledge_repo,
+                appointment_repo=mock_appointment_repo,
             )
 
     @pytest.mark.asyncio
@@ -384,6 +387,8 @@ class TestControllerErrorPropagation:
         mock_company_repo.get_by_id.return_value = AsyncMock(id=1)
         mock_knowledge_repo = AsyncMock()
         mock_knowledge_repo.get_by_company.return_value = []
+        mock_appointment_repo = AsyncMock()
+        mock_appointment_repo.has_conflict.return_value = False
 
         request = ChatRequest(message="Quero agendar")
         with pytest.raises(ServiceUnavailableError):
@@ -392,6 +397,7 @@ class TestControllerErrorPropagation:
                 conversation_repo=mock_conv_repo, message_repo=mock_msg_repo,
                 company_repo=mock_company_repo,
                 knowledge_repo=mock_knowledge_repo,
+                appointment_repo=mock_appointment_repo,
             )
 
 

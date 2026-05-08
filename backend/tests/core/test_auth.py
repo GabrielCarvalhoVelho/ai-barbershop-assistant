@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -101,3 +102,50 @@ class TestGetCurrentUser:
         """Header Authorization com scheme diferente de Bearer retorna 401."""
         response = client.get("/api/v1/auth/me", headers={"Authorization": "Token abc123"})
         assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_invalid_signature_raises_invalid_token(self):
+        """JWT assinado com chave errada → InvalidTokenError."""
+        from jose import jwt as _jwt
+        token = _jwt.encode(
+            {"sub": "1", "exp": datetime.now(timezone.utc) + timedelta(minutes=30)},
+            "chave-errada-diferente-da-configurada",
+            algorithm="HS256",
+        )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        mock_session = AsyncMock()
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await get_current_user(credentials=credentials, session=mock_session)
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.code == "AUTH_003"
+
+    @pytest.mark.asyncio
+    async def test_expired_token_raises_invalid_token(self):
+        """JWT com exp no passado → InvalidTokenError."""
+        expired_token = create_access_token(
+            {"sub": "1"},
+            expires_delta=timedelta(seconds=-1),
+        )
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=expired_token)
+        mock_session = AsyncMock()
+        with pytest.raises(InvalidTokenError) as exc_info:
+            await get_current_user(credentials=credentials, session=mock_session)
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.code == "AUTH_003"
+
+    @pytest.mark.asyncio
+    async def test_inactive_user_raises_invalid_token(self):
+        """Token válido mas user.is_active=False → InvalidTokenError."""
+        token = create_access_token({"sub": "1"})
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        mock_session = AsyncMock()
+        inactive_user = _make_user(UserRole.CUSTOMER)
+        inactive_user.is_active = False
+        with patch("app.core.auth.UserRepository") as MockRepo:
+            instance = AsyncMock()
+            instance.get_by_id.return_value = inactive_user
+            MockRepo.return_value = instance
+            with pytest.raises(InvalidTokenError) as exc_info:
+                await get_current_user(credentials=credentials, session=mock_session)
+        assert exc_info.value.status_code == 401
+        assert exc_info.value.code == "AUTH_003"
