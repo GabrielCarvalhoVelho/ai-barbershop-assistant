@@ -1,6 +1,7 @@
-from app.core.exceptions import AppointmentConflictError, AuthorizationError, BusinessError, NotFoundError
+from app.core.exceptions import AppointmentConflictError, BusinessError, NotFoundError
+from app.core.permissions import ensure_owner_or_admin
 from app.models.appointment import Appointment
-from app.models.enums import AppointmentStatus, UserRole
+from app.models.enums import AppointmentStatus
 from app.models.user import User
 from app.modules.appointments.schemas import AppointmentCreate
 from app.repositories.appointment_repository import AppointmentRepository
@@ -37,8 +38,12 @@ async def get_appointment(
     appt = await repo.get_by_id(appointment_id)
     if appt is None:
         raise NotFoundError("Agendamento não encontrado.")
-    if appt.user_id != current_user.id and current_user.role != UserRole.ADMIN:
-        raise AuthorizationError("Sem permissão para acessar este agendamento.")
+    ensure_owner_or_admin(
+        current_user,
+        resource_owner_id=appt.user_id,
+        resource_company_id=appt.company_id,
+        error_message="Sem permissão para acessar este agendamento.",
+    )
     return appt
 
 

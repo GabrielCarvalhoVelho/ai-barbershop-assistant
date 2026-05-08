@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+
+# Virtualenv
+venv/
+.venv/
+
+# Dev local
+backend/barbershop.db
+.env
+*.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testes (não vão para a imagem de produção)
+backend/tests/
+
+# Git
+.git/
+.gitignore

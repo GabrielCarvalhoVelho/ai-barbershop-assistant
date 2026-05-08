@@ -15,6 +15,7 @@ Catálogo de error codes por domínio:
     AUTH_005  — Conta bloqueada por excesso de tentativas de login
     APT_001   — Conflito de horário de agendamento
     CHAT_001  — Conteúdo repetitivo (spam) ou regra de negócio de chat
+    USR_001   — Violação de regra de gestão de usuários (auto-proteção do admin)
     DB_001    — Erro genérico de banco de dados
     DB_002    — Violação de constraint (FK, UNIQUE, NOT NULL)
     DB_003    — Serviço de banco indisponível
@@ -97,6 +98,13 @@ class AppointmentConflictError(BusinessError):
 
     status_code = 400
     code = "APT_001"
+
+
+class UserManagementError(BusinessError):
+    """Violação de regra de gestão de usuários (auto-proteção do admin, etc.)."""
+
+    status_code = 400
+    code = "USR_001"
 
 
 class ValidationError(AppError):

@@ -4,13 +4,14 @@ TCC — backend de atendimento automatizado para barbearias via IA generativa (F
 
 ## Estado atual
 
-**~690 testes.** Sistema de agendamento automático completo:
+**~755 testes.** Sistema de agendamento automático + RBAC consolidado:
 - Model `Appointment` + migração Alembic (`appointmentstatus` ENUM portável SQLite/PostgreSQL)
 - `AppointmentRepository` com detecção de conflito portável (Python-side overlap check)
 - Schemas Pydantic, service com regras de negócio, controller, 4 endpoints REST protegidos por JWT
 - Integração LLM: assistente emite bloco `<APPOINTMENT>` → parser extrai e valida → cria no banco
-- Endpoints: `POST /api/v1/appointments/`, `GET /api/v1/appointments/me`, `GET /api/v1/appointments/{id}`, `PATCH /api/v1/appointments/{id}/cancel`
-- Error codes por domínio: `APT_001` (conflito de horário), `CHAT_001` (spam/regras de chat)
+- Endpoints customer: `POST /api/v1/appointments/`, `GET /api/v1/appointments/me`, `GET /api/v1/appointments/{id}`, `PATCH /api/v1/appointments/{id}/cancel`
+- Endpoints admin: `GET /api/v1/admin/appointments/`, `GET /api/v1/admin/users/`, `PATCH /api/v1/admin/users/{id}/role`, `PATCH /api/v1/admin/users/{id}/active`
+- Error codes por domínio: `APT_001` (conflito de horário), `CHAT_001` (spam/regras de chat), `USR_001` (auto-proteção do admin)
 
 ## Como rodar
 
@@ -52,3 +53,12 @@ Bancos: SQLite in-memory (testes), PostgreSQL local (dev, banco `barbershop`), S
 - **Password hashing:** bcrypt (timing-attack safe), nunca armazenado em plaintext
 - **Error messages:** Genéricas ("Credenciais inválidas") — mesmo erro para usuário não encontrado ou senha errada (previne user enumeration)
 - **DB indexes:** phone e email têm índices únicos (UNIQUE constraint auto-cria B-tree em PostgreSQL)
+
+## Controle de Permissões (RBAC)
+
+- **Roles:** `UserRole.CUSTOMER` (default no signup) e `UserRole.ADMIN`. Promoção via `PATCH /api/v1/admin/users/{id}/role`
+- **Dependency factory `require_role(*roles)`** em [app/core/auth.py](backend/app/core/auth.py): aplica em rotas que exigem role específico (`Depends(require_role(UserRole.ADMIN))`)
+- **Helper `ensure_owner_or_admin`** em [app/core/permissions.py](backend/app/core/permissions.py): centraliza checagem "owner do recurso OU admin da empresa". Usar com `resource_company_id` para isolar multi-tenancy (admin da empresa A não acessa dados da B)
+- **Auto-proteção do admin:** admin não pode rebaixar/desativar a si mesmo; sistema bloqueia rebaixar/desativar o último admin ativo da empresa (`USR_001`)
+- **Target em outra empresa retorna 404, não 403** — para não vazar existência do recurso
+- **Mudanças de role/active são logadas** (auditoria sem dados sensíveis): `admin_id`, `target_id`, `old_role/new_role` ou `is_active`

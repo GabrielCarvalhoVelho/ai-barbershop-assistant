@@ -1,7 +1,8 @@
 from app.core.exceptions import AppError, AuthorizationError, BusinessError, NotFoundError
 from app.core.logger import get_logger
+from app.core.permissions import ensure_owner_or_admin
 from app.core.config import settings
-from app.models.enums import ConversationStatus, UserRole
+from app.models.enums import ConversationStatus
 from app.models.user import User
 from app.modules.ai.context_service import format_knowledge_context
 from app.modules.ai.prompts import BusinessInfo
@@ -207,10 +208,12 @@ class ConversationController:
                 message=f"Conversa {conversation_id} não encontrada.",
             )
 
-        if current_user.role != UserRole.ADMIN and conversation.user_id != current_user.id:
-            raise AuthorizationError(
-                message=f"Conversa {conversation_id} não pertence ao usuário informado.",
-            )
+        ensure_owner_or_admin(
+            current_user,
+            resource_owner_id=conversation.user_id,
+            resource_company_id=conversation.company_id,
+            error_message=f"Conversa {conversation_id} não pertence ao usuário informado.",
+        )
 
         message_count = await message_repo.count_by_conversation(conversation_id)
 
@@ -254,10 +257,12 @@ class ConversationController:
                 message=f"Conversa {conversation_id} não encontrada.",
             )
 
-        if current_user.role != UserRole.ADMIN and conversation.user_id != current_user.id:
-            raise AuthorizationError(
-                message=f"Conversa {conversation_id} não pertence ao usuário informado.",
-            )
+        ensure_owner_or_admin(
+            current_user,
+            resource_owner_id=conversation.user_id,
+            resource_company_id=conversation.company_id,
+            error_message=f"Conversa {conversation_id} não pertence ao usuário informado.",
+        )
 
         messages = await message_repo.get_by_conversation(
             conversation_id, limit=limit, offset=offset
@@ -305,10 +310,12 @@ class ConversationController:
                 message=f"Conversa {conversation_id} não encontrada.",
             )
 
-        if current_user.role != UserRole.ADMIN and conversation.user_id != current_user.id:
-            raise AuthorizationError(
-                message=f"Conversa {conversation_id} não pertence ao usuário informado.",
-            )
+        ensure_owner_or_admin(
+            current_user,
+            resource_owner_id=conversation.user_id,
+            resource_company_id=conversation.company_id,
+            error_message=f"Conversa {conversation_id} não pertence ao usuário informado.",
+        )
 
         if conversation.status == ConversationStatus.CLOSED:
             raise BusinessError(

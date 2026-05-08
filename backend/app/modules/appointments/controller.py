@@ -1,3 +1,4 @@
+from app.models.enums import AppointmentStatus
 from app.models.user import User
 from app.modules.appointments import service
 from app.modules.appointments.schemas import (
@@ -39,6 +40,28 @@ class AppointmentController:
         appointments = await repo.get_by_user(current_user.id, limit=limit, offset=offset)
         all_appts = await repo.get_by_user(current_user.id, limit=10_000, offset=0)
         pagination = PaginationResponse(limit=limit, offset=offset, total=len(all_appts))
+        data = AppointmentListResponse(
+            appointments=[AppointmentResponse.model_validate(a) for a in appointments],
+            pagination=pagination,
+        )
+        return SuccessResponse(data=data.model_dump())
+
+    @staticmethod
+    async def list_by_company(
+        admin: User,
+        repo: AppointmentRepository,
+        *,
+        limit: int,
+        offset: int,
+        status: AppointmentStatus | None,
+    ) -> SuccessResponse:
+        appointments, total = await repo.list_by_company(
+            company_id=admin.company_id,
+            limit=limit,
+            offset=offset,
+            status=status,
+        )
+        pagination = PaginationResponse(limit=limit, offset=offset, total=total)
         data = AppointmentListResponse(
             appointments=[AppointmentResponse.model_validate(a) for a in appointments],
             pagination=pagination,

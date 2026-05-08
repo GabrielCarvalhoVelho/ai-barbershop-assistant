@@ -451,3 +451,68 @@ class TestUpdateStatus:
         )
         result = await repo.update_status(appt.id, AppointmentStatus.COMPLETED)
         assert result.status == AppointmentStatus.COMPLETED
+
+
+class TestListByCompany:
+    @pytest.mark.asyncio
+    async def test_retorna_apenas_da_empresa(self, session, repo, user, company):
+        # Cria outra empresa + user + appointment
+        other_company = Company(name="Outra")
+        session.add(other_company)
+        await session.commit()
+        await session.refresh(other_company)
+
+        other_user = User(
+            company_id=other_company.id,
+            name="Outro",
+            phone="+5511888880000",
+            password_hash="x",
+        )
+        session.add(other_user)
+        await session.commit()
+        await session.refresh(other_user)
+
+        await _create_appointment(session, user.id, company.id, _NOW)
+        await _create_appointment(
+            session, other_user.id, other_company.id, _NOW + timedelta(hours=1)
+        )
+
+        appts, total = await repo.list_by_company(company_id=company.id)
+        assert total == 1
+        assert all(a.company_id == company.id for a in appts)
+
+    @pytest.mark.asyncio
+    async def test_filtra_por_status(self, session, repo, user, company):
+        await _create_appointment(session, user.id, company.id, _NOW)
+        await _create_appointment(
+            session,
+            user.id,
+            company.id,
+            _NOW + timedelta(hours=1),
+            status=AppointmentStatus.CANCELLED,
+        )
+
+        appts, total = await repo.list_by_company(
+            company_id=company.id, status=AppointmentStatus.CANCELLED
+        )
+        assert total == 1
+        assert appts[0].status == AppointmentStatus.CANCELLED
+
+    @pytest.mark.asyncio
+    async def test_pagination(self, session, repo, user, company):
+        for i in range(3):
+            await _create_appointment(
+                session, user.id, company.id, _NOW + timedelta(hours=i)
+            )
+
+        appts, total = await repo.list_by_company(
+            company_id=company.id, limit=2, offset=0
+        )
+        assert total == 3
+        assert len(appts) == 2
+
+    @pytest.mark.asyncio
+    async def test_empresa_sem_agendamentos(self, repo):
+        appts, total = await repo.list_by_company(company_id=999)
+        assert total == 0
+        assert appts == []

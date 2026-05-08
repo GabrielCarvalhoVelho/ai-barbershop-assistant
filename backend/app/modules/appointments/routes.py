@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_role
 from app.db.database import get_session
+from app.models.enums import AppointmentStatus, UserRole
 from app.models.user import User
 from app.modules.appointments.controller import AppointmentController
 from app.modules.appointments.schemas import AppointmentCreate
@@ -11,6 +12,7 @@ from app.schemas.base_schema import SuccessResponse
 from app.schemas.error_schema import ErrorResponse
 
 router = APIRouter(prefix="/api/v1/appointments", tags=["appointments"])
+admin_router = APIRouter(prefix="/api/v1/admin/appointments", tags=["admin - appointments"])
 
 _SECURITY = {"security": [{"bearerAuth": []}]}
 _401 = {"model": ErrorResponse, "description": "Token ausente ou inválido (AUTH_003)"}
@@ -80,3 +82,22 @@ async def cancel_appointment(
 ):
     repo = AppointmentRepository(session)
     return await AppointmentController.cancel(appointment_id, current_user, repo)
+
+
+@admin_router.get(
+    "/",
+    response_model=SuccessResponse,
+    openapi_extra=_SECURITY,
+    responses={401: _401, 403: _403},
+)
+async def list_company_appointments(
+    limit: int = Query(default=20, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    status: AppointmentStatus | None = Query(default=None),
+    admin: User = Depends(require_role(UserRole.ADMIN)),
+    session: AsyncSession = Depends(get_session),
+):
+    repo = AppointmentRepository(session)
+    return await AppointmentController.list_by_company(
+        admin, repo, limit=limit, offset=offset, status=status
+    )

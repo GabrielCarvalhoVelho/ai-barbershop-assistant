@@ -1,7 +1,7 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db_utils import DB_TIMEOUT_SECONDS, db_operation
@@ -119,6 +119,37 @@ class AppointmentRepository:
             "Agendamentos no período: company_id=%s count=%s", company_id, len(appointments)
         )
         return appointments
+
+    @db_operation("listar agendamentos da empresa")
+    async def list_by_company(
+        self,
+        company_id: int,
+        limit: int = 20,
+        offset: int = 0,
+        status: AppointmentStatus | None = None,
+    ) -> tuple[list[Appointment], int]:
+        base = select(Appointment).where(Appointment.company_id == company_id)
+        if status is not None:
+            base = base.where(Appointment.status == status)
+
+        count_stmt = select(func.count()).select_from(base.subquery())
+        list_stmt = (
+            base.order_by(Appointment.scheduled_at.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+
+        total_result, list_result = await asyncio.gather(
+            asyncio.wait_for(
+                self._session.execute(count_stmt), timeout=DB_TIMEOUT_SECONDS
+            ),
+            asyncio.wait_for(
+                self._session.execute(list_stmt), timeout=DB_TIMEOUT_SECONDS
+            ),
+        )
+        total = total_result.scalar_one()
+        appointments = list(list_result.scalars().all())
+        return appointments, total
 
     @db_operation("verificar conflito de agendamento")
     async def has_conflict(
