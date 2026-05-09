@@ -1,27 +1,72 @@
-import { Button } from '@/components/ui/button';
-import { useAuth } from '@/hooks/useAuth';
+import { useEffect } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router-dom';
+import { toast } from 'sonner';
+import { MessageList } from '@/components/chat/MessageList';
+import { ChatInput } from '@/components/chat/ChatInput';
+import { useChat } from '@/hooks/useChat';
+import { useChatStore } from '@/store/chatStore';
+
+function parseConversationId(raw: string | undefined): number | null {
+  if (!raw) return null;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
 
 export default function ChatPage() {
-  const { user, logout } = useAuth();
-  if (!user) return null;
+  const { id: rawId } = useParams<{ id?: string }>();
+  const conversationId = parseConversationId(rawId);
+  const navigate = useNavigate();
+  const lastConversationId = useChatStore((s) => s.lastConversationId);
+  const setLast = useChatStore((s) => s.setLast);
+  const clearLast = useChatStore((s) => s.clear);
+  const {
+    messages,
+    isLoading,
+    error,
+    send,
+    retry,
+    isSending,
+    secondsLeft,
+    isLocked,
+  } = useChat(conversationId);
+
+  useEffect(() => {
+    if (!error) return;
+    if (error.status === 404 || error.status === 403) {
+      clearLast();
+      toast.error('Conversa não encontrada.');
+      navigate('/chat', { replace: true });
+      return;
+    }
+    toast.error(error.message);
+  }, [error, navigate, clearLast]);
+
+  useEffect(() => {
+    if (conversationId != null && !isLoading && !error) {
+      setLast(conversationId);
+    }
+  }, [conversationId, isLoading, error, setLast]);
+
+  if (conversationId == null && lastConversationId != null) {
+    return <Navigate to={`/chat/${lastConversationId}`} replace />;
+  }
 
   return (
-    <div className="flex min-h-dvh flex-col">
-      <header className="flex items-center justify-between border-b border-border bg-card px-6 py-4">
-        <div>
-          <p className="text-sm text-muted-foreground">Logado como</p>
-          <p className="text-base font-medium">
-            {user.name}{' '}
-            <span className="text-xs text-muted-foreground">({user.role})</span>
-          </p>
-        </div>
-        <Button variant="outline" onClick={logout}>
-          Sair
-        </Button>
-      </header>
-      <main className="flex flex-1 items-center justify-center text-muted-foreground">
-        Chat em breve.
-      </main>
+    <div className="flex h-full flex-col">
+      <div className="min-h-0 flex-1">
+        <MessageList
+          messages={messages}
+          isLoading={isLoading}
+          isSending={isSending}
+          isLocked={isLocked}
+          onRetry={retry}
+        />
+      </div>
+      <ChatInput
+        onSubmit={send}
+        disabled={isSending || isLocked}
+        secondsLeft={secondsLeft}
+      />
     </div>
   );
 }

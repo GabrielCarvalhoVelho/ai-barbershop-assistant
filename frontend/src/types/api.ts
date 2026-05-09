@@ -100,6 +100,8 @@ export type Message = {
   sender: MessageSender;
   content: string;
   created_at: IsoDateTime;
+  // Client-side only: marca msg otimista que falhou ao enviar; nunca vem do backend.
+  failed?: boolean;
 };
 
 export type ConversationSummary = {

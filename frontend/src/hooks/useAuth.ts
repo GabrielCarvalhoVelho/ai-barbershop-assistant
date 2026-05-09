@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuthStore } from '@/store/authStore';
+import { useChatStore } from '@/store/chatStore';
 import {
   login as loginApi,
   register as registerApi,
@@ -48,6 +49,7 @@ export function useAuth() {
     clearToken();
     setUser(null);
     queryClient.clear();
+    useChatStore.getState().clear();
     navigate('/login', { replace: true });
   };
 
