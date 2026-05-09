@@ -38,6 +38,25 @@ class ConversationRepository:
             logger.info("Conversa não encontrada: id=%s", conversation_id)
         return result
 
+    @db_operation("buscar conversa ativa do usuário")
+    async def get_active_by_user(
+        self, user_id: int, company_id: int
+    ) -> Conversation | None:
+        stmt = (
+            select(Conversation)
+            .where(
+                Conversation.user_id == user_id,
+                Conversation.company_id == company_id,
+                Conversation.status == ConversationStatus.ACTIVE,
+            )
+            .order_by(Conversation.started_at.desc())
+            .limit(1)
+        )
+        result = await asyncio.wait_for(
+            self._session.execute(stmt), timeout=DB_TIMEOUT_SECONDS
+        )
+        return result.scalars().first()
+
     @db_operation("encerrar conversa")
     async def close(self, conversation_id: int) -> Conversation | None:
         logger.info("Encerrando conversa: id=%s", conversation_id)
@@ -61,16 +80,37 @@ class MessageRepository:
         self._session = session
 
     @db_operation("salvar mensagem")
-    async def save(self, conversation_id: int, sender: str, content: str) -> Message:
+    async def save(
+        self,
+        conversation_id: int,
+        sender: str,
+        content: str,
+        whatsapp_message_id: str | None = None,
+    ) -> Message:
         logger.info(
             "Salvando mensagem: conversation_id=%s sender=%s", conversation_id, sender
         )
-        message = Message(conversation_id=conversation_id, sender=sender, content=content)
+        message = Message(
+            conversation_id=conversation_id,
+            sender=sender,
+            content=content,
+            whatsapp_message_id=whatsapp_message_id,
+        )
         self._session.add(message)
         await asyncio.wait_for(self._session.flush(), timeout=DB_TIMEOUT_SECONDS)
         await asyncio.wait_for(self._session.refresh(message), timeout=DB_TIMEOUT_SECONDS)
         logger.info("Mensagem salva: id=%s", message.id)
         return message
+
+    @db_operation("buscar mensagem por whatsapp_message_id")
+    async def get_by_whatsapp_id(self, whatsapp_message_id: str) -> Message | None:
+        stmt = select(Message).where(
+            Message.whatsapp_message_id == whatsapp_message_id
+        )
+        result = await asyncio.wait_for(
+            self._session.execute(stmt), timeout=DB_TIMEOUT_SECONDS
+        )
+        return result.scalars().first()
 
     @db_operation("salvar par de mensagens")
     async def save_pair(

@@ -39,6 +39,32 @@ class UserRepository:
         )
         return result.scalars().first()
 
+    @db_operation("criar ou retornar usuário pelo telefone")
+    async def get_or_create_by_phone(
+        self,
+        phone: str,
+        company_id: int,
+        name: str,
+    ) -> tuple[User, bool]:
+        existing = await self.get_by_phone(phone)
+        if existing is not None:
+            return existing, False
+        # Senha "!" — bcrypt nunca produz hash com esse valor, garantindo que
+        # o usuário criado via WhatsApp não consegue logar pelo painel até
+        # definir senha. Padrão "unusable password" do Django.
+        user = User(
+            company_id=company_id,
+            name=name,
+            phone=phone,
+            email=None,
+            password_hash="!",
+            role=UserRole.CUSTOMER,
+            is_active=True,
+        )
+        self._session.add(user)
+        await asyncio.wait_for(self._session.flush(), timeout=DB_TIMEOUT_SECONDS)
+        return user, True
+
     @db_operation("criar usuário")
     async def create(
         self,

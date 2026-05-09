@@ -21,6 +21,22 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 30
 
+    whatsapp_token: str = ""
+    whatsapp_phone_number_id: str = ""
+    whatsapp_verify_token: str = ""
+    whatsapp_app_secret: str = ""
+    whatsapp_api_version: str = "v21.0"
+    whatsapp_default_company_id: int = 1
+
+    @property
+    def whatsapp_enabled(self) -> bool:
+        return bool(
+            self.whatsapp_token
+            and self.whatsapp_phone_number_id
+            and self.whatsapp_verify_token
+            and self.whatsapp_app_secret
+        )
+
     model_config = {
         "env_file": str(PROJECT_ROOT / ".env"),
         "env_file_encoding": "utf-8",

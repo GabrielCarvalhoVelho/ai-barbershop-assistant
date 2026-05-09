@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -f backend/Dockerfile -t ai-barbershop-backend:ci .
+
+      - name: Run pytest inside the image
+        run: |
+          docker run --rm \
+            --entrypoint python \
+            -e DEBUG=true \
+            ai-barbershop-backend:ci \
+            -m pytest tests/ -v

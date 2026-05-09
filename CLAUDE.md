@@ -4,7 +4,7 @@ TCC — backend de atendimento automatizado para barbearias via IA generativa (F
 
 ## Estado atual
 
-**~755 testes.** Sistema de agendamento automático + RBAC consolidado:
+**775 testes.** Sistema de agendamento automático + RBAC consolidado + integração WhatsApp Cloud API:
 - Model `Appointment` + migração Alembic (`appointmentstatus` ENUM portável SQLite/PostgreSQL)
 - `AppointmentRepository` com detecção de conflito portável (Python-side overlap check)
 - Schemas Pydantic, service com regras de negócio, controller, 4 endpoints REST protegidos por JWT
@@ -62,3 +62,14 @@ Bancos: SQLite in-memory (testes), PostgreSQL local (dev, banco `barbershop`), S
 - **Auto-proteção do admin:** admin não pode rebaixar/desativar a si mesmo; sistema bloqueia rebaixar/desativar o último admin ativo da empresa (`USR_001`)
 - **Target em outra empresa retorna 404, não 403** — para não vazar existência do recurso
 - **Mudanças de role/active são logadas** (auditoria sem dados sensíveis): `admin_id`, `target_id`, `old_role/new_role` ou `is_active`
+
+## WhatsApp Cloud API
+
+- **Webhook:** `GET/POST /api/v1/webhooks/whatsapp` em [app/modules/whatsapp/routes.py](backend/app/modules/whatsapp/routes.py)
+- **GET (verify):** Meta envia `hub.mode`, `hub.verify_token`, `hub.challenge`. Se `verify_token` bater com `WHATSAPP_VERIFY_TOKEN`, retorna o challenge cru. Caso contrário 403.
+- **POST (events):** Valida `X-Hub-Signature-256` (HMAC SHA256 do body bruto com `WHATSAPP_APP_SECRET`). Sem header válido → 403.
+- **Idempotência:** mensagens persistem com `whatsapp_message_id` (UNIQUE). Mesma `wamid` recebida duas vezes é processada uma única vez.
+- **Auto-cadastro:** phone desconhecido cria User com `role=CUSTOMER`, `password_hash="!"` (sentinel — não permite login pelo painel até definir senha). Empresa = `WHATSAPP_DEFAULT_COMPANY_ID` (1 número → 1 empresa hoje).
+- **Reuso:** o service WhatsApp chama `chat.service.generate_response`, `appointment_parser` e `appointment_repo` — mesmo pipeline de IA do chat REST, apenas com adapter diferente de entrada/saída.
+- **Cliente outbound:** `WhatsAppClient.send_text()` em [client.py](backend/app/modules/whatsapp/client.py) usa httpx; injetado via `Depends(get_whatsapp_client)` para facilitar mock em testes.
+- **Setup local de webhook:** Cloudflare Tunnel → URL pública → configurar no painel Meta como webhook callback URL com verify token igual ao `.env`.

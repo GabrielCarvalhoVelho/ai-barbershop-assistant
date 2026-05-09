@@ -37,6 +37,7 @@ from app.modules.appointments.routes import (
     admin_router as admin_appointment_router,
 )
 from app.modules.admin_users.routes import router as admin_users_router
+from app.modules.whatsapp.routes import router as whatsapp_router
 import app.models  # noqa: F401 — registra models no SQLAlchemy antes do create_tables
 
 
@@ -91,6 +92,7 @@ app.include_router(knowledge_router)
 app.include_router(appointment_router)
 app.include_router(admin_appointment_router)
 app.include_router(admin_users_router)
+app.include_router(whatsapp_router)
 
 
 def _custom_openapi():
