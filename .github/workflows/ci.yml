@@ -19,5 +19,6 @@ jobs:
           docker run --rm \
             --entrypoint python \
             -e DEBUG=true \
+            -v "${{ github.workspace }}/backend/tests:/app/tests:ro" \
             ai-barbershop-backend:ci \
             -m pytest tests/ -v
