@@ -54,11 +54,17 @@ class WhatsAppClient:
             )
 
         if response.status_code >= 400:
-            # Não logamos o body do payload (contém a mensagem do cliente).
+            # Body de ERRO da Meta é seguro logar (não contém PII da mensagem
+            # original). Útil para diagnosticar 400 (recipient não aprovado etc).
+            try:
+                error_body = response.json()
+            except Exception:
+                error_body = {"raw": response.text[:500]}
             logger.error(
-                "Meta retornou erro: status=%s phone_number_id=%s",
+                "Meta retornou erro: status=%s phone_number_id=%s error=%s",
                 response.status_code,
                 self._phone_number_id,
+                error_body,
             )
             raise ServiceUnavailableError(
                 message="WhatsApp Cloud API retornou erro."
@@ -73,7 +79,15 @@ class WhatsAppClient:
                 message="Resposta inválida do WhatsApp Cloud API."
             )
 
-        logger.info("Mensagem WhatsApp enviada: wamid=%s", wamid)
+        # Mascara o número (últimos 4 dígitos) só pra confirmar destino correto
+        # em logs sem violar LGPD.
+        masked_to = f"***{to[-4:]}" if len(to) >= 4 else "***"
+        logger.info(
+            "Mensagem WhatsApp enviada: wamid=%s to=%s contacts_returned=%s",
+            wamid,
+            masked_to,
+            data.get("contacts", []),
+        )
         return wamid
 
 

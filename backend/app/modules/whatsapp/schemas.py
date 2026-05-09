@@ -41,6 +41,7 @@ class WhatsAppValue(BaseModel):
     messaging_product: str
     contacts: list[WhatsAppContact] | None = None
     messages: list[WhatsAppIncomingMessage] | None = None
+    statuses: list[dict] | None = None
 
     model_config = ConfigDict(extra="ignore")
 

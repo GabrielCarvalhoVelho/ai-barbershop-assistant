@@ -71,6 +71,18 @@ async def handle_webhook_payload(
     appointment_repo: AppointmentRepository,
     whatsapp_client: WhatsAppClient,
 ) -> None:
+    # Status updates (sent/delivered/read/failed) — só logar para diagnóstico.
+    for entry in payload.entry:
+        for change in entry.changes:
+            if change.value.statuses:
+                for status in change.value.statuses:
+                    logger.info(
+                        "Status WhatsApp: status=%s wamid=%s errors=%s",
+                        status.get("status"),
+                        status.get("id"),
+                        status.get("errors"),
+                    )
+
     contact_name, msg = _extract_first_text_message(payload)
     if msg is None:
         logger.info("Webhook sem mensagem de texto — ack apenas.")
