@@ -111,3 +111,30 @@ class ConversationMessagesResponse(BaseModel):
     conversation_id: int = Field(..., examples=[1])
     messages: list[MessageResponse] = Field(..., examples=[[]])
     pagination: PaginationResponse
+
+
+# ========================
+# Conversation List
+# ========================
+
+
+class ConversationListItemResponse(BaseModel):
+    """Item individual na lista de conversas do usuário."""
+
+    id: int = Field(..., examples=[1])
+    status: ConversationStatus = Field(..., examples=["active"])
+    started_at: datetime = Field(..., examples=["2026-03-30T14:00:00Z"])
+    ended_at: datetime | None = Field(None, examples=[None])
+    message_count: int = Field(..., examples=[5])
+    last_message_preview: str | None = Field(
+        None,
+        description="Primeiros 100 caracteres da última mensagem",
+        examples=["Olá! Oferecemos corte, barba e sobrancelha..."],
+    )
+
+
+class ConversationListPaginatedResponse(BaseModel):
+    """Resposta paginada com lista de conversas do usuário."""
+
+    conversations: list[ConversationListItemResponse] = Field(..., examples=[[]])
+    pagination: PaginationResponse

@@ -74,6 +74,55 @@ class ConversationRepository:
         logger.info("Conversa encerrada: id=%s", conversation.id)
         return conversation
 
+    @db_operation("listar conversas por usuário")
+    async def list_by_user(
+        self,
+        user_id: int,
+        company_id: int,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> tuple[list[Conversation], int]:
+        """Lista conversas do usuário, paginadas por started_at DESC."""
+        logger.info(
+            "Listando conversas: user_id=%s company_id=%s limit=%s offset=%s",
+            user_id,
+            company_id,
+            limit,
+            offset,
+        )
+        stmt = (
+            select(Conversation)
+            .where(
+                (Conversation.user_id == user_id)
+                & (Conversation.company_id == company_id)
+            )
+            .order_by(Conversation.started_at.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await asyncio.wait_for(
+            self._session.execute(stmt), timeout=DB_TIMEOUT_SECONDS
+        )
+        conversations = list(result.scalars().all())
+
+        count_stmt = select(func.count(Conversation.id)).where(
+            (Conversation.user_id == user_id)
+            & (Conversation.company_id == company_id)
+        )
+        count_result = await asyncio.wait_for(
+            self._session.execute(count_stmt), timeout=DB_TIMEOUT_SECONDS
+        )
+        total = count_result.scalar_one()
+
+        logger.info(
+            "Conversas listadas: user_id=%s company_id=%s count=%s total=%s",
+            user_id,
+            company_id,
+            len(conversations),
+            total,
+        )
+        return conversations, total
+
 
 class MessageRepository:
     def __init__(self, session: AsyncSession):

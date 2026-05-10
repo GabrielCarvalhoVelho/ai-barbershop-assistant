@@ -1,0 +1,11 @@
+#!/bin/bash
+# pre-commit: valida customizações do Copilot antes de cada commit
+
+set -e
+
+# Caminho absoluto do repositório
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+# Valida customizações
+.github/scripts/validate-customizations.sh

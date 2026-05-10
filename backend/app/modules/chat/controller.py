@@ -13,6 +13,8 @@ from app.repositories.appointment_repository import AppointmentRepository
 from app.modules.chat.schemas import (
     ChatRequest,
     ChatResponse,
+    ConversationListItemResponse,
+    ConversationListPaginatedResponse,
     ConversationMessagesResponse,
     ConversationResponse,
     ConversationSummaryResponse,
@@ -338,5 +340,64 @@ class ConversationController:
                 status=conversation.status,
                 started_at=conversation.started_at,
                 ended_at=conversation.ended_at,
+            ).model_dump()
+        )
+
+    @staticmethod
+    async def list_user_conversations(
+        user_id: int,
+        company_id: int,
+        limit: int,
+        offset: int,
+        conversation_repo: ConversationRepository,
+    ) -> SuccessResponse:
+        """Lista conversas do usuário, paginadas."""
+        logger.info(
+            "Listando conversas: user_id=%s company_id=%s limit=%s offset=%s",
+            user_id,
+            company_id,
+            limit,
+            offset,
+        )
+
+        conversations, total = await conversation_repo.list_by_user(
+            user_id=user_id,
+            company_id=company_id,
+            limit=limit,
+            offset=offset,
+        )
+
+        data = [
+            {
+                "id": c.id,
+                "status": c.status,
+                "started_at": c.started_at,
+                "ended_at": c.ended_at,
+                "message_count": len(c.messages),
+                "last_message_preview": (
+                    c.messages[-1].content[:100] + "..."
+                    if c.messages
+                    else None
+                ),
+            }
+            for c in conversations
+        ]
+
+        logger.info(
+            "Conversas listadas: user_id=%s company_id=%s returned=%s total=%s",
+            user_id,
+            company_id,
+            len(data),
+            total,
+        )
+
+        return SuccessResponse(
+            data=ConversationListPaginatedResponse(
+                conversations=[ConversationListItemResponse(**item) for item in data],
+                pagination=PaginationResponse(
+                    limit=limit,
+                    offset=offset,
+                    total=total,
+                ),
             ).model_dump()
         )

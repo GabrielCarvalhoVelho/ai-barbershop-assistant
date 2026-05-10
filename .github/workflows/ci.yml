@@ -6,8 +6,27 @@ on:
   pull_request:
 
 jobs:
+  validate-customizations:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Copilot customizations
+        run: bash .github/scripts/validate-customizations.sh
+
+  skills-check:
+    runs-on: ubuntu-latest
+    needs: validate-customizations
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run skill validators
+        run: |
+          find .github/skills -type f -path '*/scripts/validate.sh' -exec bash {} \;
+
   build-and-test:
     runs-on: ubuntu-latest
+    needs: skills-check
     steps:
       - uses: actions/checkout@v4
 

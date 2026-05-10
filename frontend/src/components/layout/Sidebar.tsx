@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { LogOut, Plus } from 'lucide-react';
+import { ConversationList } from '@/components/chat/ConversationList';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/useAuth';
@@ -20,6 +21,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const clearLast = useChatStore((s) => s.clear);
+  const setLast = useChatStore((s) => s.setLast);
 
   const handleNewConversation = () => {
     clearLast();
@@ -27,8 +29,13 @@ export function Sidebar() {
     navigate('/chat');
   };
 
+  const handleSelectConversation = (id: number) => {
+    setLast(id);
+    navigate(`/chat/${id}`);
+  };
+
   return (
-    <div className="flex h-full flex-col p-4">
+    <div className="flex h-full min-h-0 flex-col p-4">
       <div className="mb-4">
         <p className="text-sm font-semibold">Barbearia AI</p>
       </div>
@@ -41,10 +48,15 @@ export function Sidebar() {
         Nova conversa
       </Button>
 
-      <div className="flex-1" />
+      <div className="mt-4 min-h-0 flex-1 overflow-hidden">
+        <ConversationList
+          onSelectConversation={handleSelectConversation}
+          maxHeight="100%"
+        />
+      </div>
 
       {user && (
-        <div className="flex items-center gap-3 border-t border-border pt-3">
+        <div className="mt-3 flex items-center gap-3 border-t border-border pt-3">
           <Avatar className="h-9 w-9">
             <AvatarFallback>{initials(user.name)}</AvatarFallback>
           </Avatar>

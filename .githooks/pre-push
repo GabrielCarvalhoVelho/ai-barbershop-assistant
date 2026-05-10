@@ -1,0 +1,9 @@
+#!/bin/bash
+# pre-push: roda todos os validadores de skills antes de push
+
+set -e
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+cd "$REPO_ROOT"
+
+find .github/skills -type f -path '*/scripts/validate.sh' -exec bash {} \;

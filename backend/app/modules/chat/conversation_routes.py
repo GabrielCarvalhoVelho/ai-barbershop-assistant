@@ -70,6 +70,56 @@ async def create_conversation(
 
 
 @router.get(
+    "/conversations",
+    response_model=SuccessResponse,
+    openapi_extra={"security": [{"bearerAuth": []}]},
+    responses={
+        401: {
+            "model": ErrorResponse,
+            "description": "Token ausente ou inválido (AUTH_003)",
+        },
+        404: {
+            "model": ErrorResponse,
+            "description": "Empresa não encontrada (RES_001)",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "Erro de validação (VAL_001)",
+        },
+        429: {
+            "model": ErrorResponse,
+            "description": "Rate limit excedido (RATE_001)",
+        },
+        500: {
+            "model": ErrorResponse,
+            "description": "Erro interno — banco de dados (DB_001) ou não tratado (APP_000)",
+        },
+        503: {
+            "model": ErrorResponse,
+            "description": "Serviço indisponível — banco fora do ar ou timeout (DB_003)",
+        },
+    },
+)
+@limiter.limit("5/minute")
+async def list_conversations(
+    request: Request,
+    limit: int = Query(default=10, ge=1, le=50, description="Quantidade de conversas por página."),
+    offset: int = Query(default=0, ge=0, description="Quantidade de conversas a pular."),
+    current_user: User = Depends(get_current_user),
+    session: AsyncSession = Depends(get_session),
+):
+    """Lista conversas do usuário, paginadas."""
+    conversation_repo = ConversationRepository(session)
+    return await ConversationController.list_user_conversations(
+        user_id=current_user.id,
+        company_id=current_user.company_id,
+        limit=limit,
+        offset=offset,
+        conversation_repo=conversation_repo,
+    )
+
+
+@router.get(
     "/conversations/{conversation_id}",
     response_model=SuccessResponse,
     openapi_extra={"security": [{"bearerAuth": []}]},
